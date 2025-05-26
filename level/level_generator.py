@@ -40,23 +40,49 @@ class Room:
             positions.append(self.get_random_position())
         return positions
 
+    def contains_point(self, x: int, y: int) -> bool:
+        """Check if a point is within the room boundaries"""
+        return (self.x <= x <= self.x + self.width and
+                self.y <= y <= self.y + self.height)
+
 class LevelGenerator:
-    """Procedural level generator with improved level design"""
+    """Enhanced procedural level generator with progressive scaling and tactical enemy placement"""
 
     def __init__(self, width=LEVEL_WIDTH, height=LEVEL_HEIGHT, current_level=1):
-        self.width = width
-        self.height = height
-        self.current_level_number = current_level  # Renamed for clarity
-        self.tiles = [[1 for _ in range(width)] for _ in range(height)]  # 1 = wall, 0 = floor
+        self.current_level_number = current_level
+
+        # Progressive map scaling - larger maps for higher levels
+        self.width = self._calculate_map_width(current_level, width)
+        self.height = self._calculate_map_height(current_level, height)
+
+        self.tiles = [[1 for _ in range(self.width)] for _ in range(self.height)]  # 1 = wall, 0 = floor
         self.rooms = []
         self.enemy_positions = []
+        self.enemy_groups = []  # New: Track enemy groups for tactical placement
         self.item_positions = []
         self.player_start_pos = None
 
-        # Scale difficulty based on current level number
-        self.max_rooms = min(MAX_ROOMS + current_level, 50)  # Cap at 50 rooms for larger levels
-        self.max_enemies = min(MAX_ENEMIES_BASE + (current_level * ENEMY_SCALING_FACTOR), MAX_ENEMIES_CAP)
-        self.items_per_level = min(ITEMS_PER_LEVEL + current_level // 2, 10)  # Cap at 10 items
+        # Enhanced scaling based on current level number
+        self.max_rooms = min(MAX_ROOMS + current_level * 2, 80)  # More rooms for larger levels
+        self.max_enemies = min(MAX_ENEMIES_BASE + (current_level * ENEMY_SCALING_FACTOR * 1.5), MAX_ENEMIES_CAP * 2)
+        self.items_per_level = min(ITEMS_PER_LEVEL + current_level // 2, 15)  # More items for longer levels
+
+        # Enemy density scaling - more enemies per room at higher levels
+        self.enemy_density_multiplier = 1.0 + (current_level * 0.1)  # 10% more enemies per level
+        self.min_group_size = max(2, current_level // 3)  # Larger groups at higher levels
+        self.max_group_size = max(4, current_level // 2)  # Scale group size with level
+
+    def _calculate_map_width(self, level: int, base_width: int) -> int:
+        """Calculate map width based on level progression"""
+        # Increase width every 3 levels, cap at 2x base size
+        width_increase = (level - 1) // 3 * 10
+        return min(base_width + width_increase, base_width * 2)
+
+    def _calculate_map_height(self, level: int, base_height: int) -> int:
+        """Calculate map height based on level progression"""
+        # Increase height every 3 levels, cap at 2x base size
+        height_increase = (level - 1) // 3 * 8
+        return min(base_height + height_increase, base_height * 2)
 
     def generate(self):
         """Generate a new level with improved design"""
@@ -66,19 +92,12 @@ class LevelGenerator:
         self.enemy_positions = []
         self.item_positions = []
 
-        # Create rooms
-        for _ in range(self.max_rooms):
-            # Random room size with occasional larger rooms
-            if random.random() < 0.2:  # 20% chance for a larger room
-                w = random.randint(ROOM_MAX_SIZE - 2, ROOM_MAX_SIZE + 2)
-                h = random.randint(ROOM_MAX_SIZE - 2, ROOM_MAX_SIZE + 2)
-                room_type = random.choice(["treasure", "challenge"])
-            else:
-                w = random.randint(ROOM_MIN_SIZE, ROOM_MAX_SIZE)
-                h = random.randint(ROOM_MIN_SIZE, ROOM_MAX_SIZE)
-                room_type = "normal"
+        # Create rooms with enhanced variety and scaling
+        for room_index in range(self.max_rooms):
+            # Enhanced room size calculation based on level and room type
+            room_type, w, h = self._determine_room_properties(room_index)
 
-            # Random room position
+            # Random room position with better distribution
             x = random.randint(1, self.width - w - 1)
             y = random.randint(1, self.height - h - 1)
 
@@ -125,6 +144,44 @@ class LevelGenerator:
 
         return self.tiles, self.player_start_pos, self.enemy_positions, self.item_positions
 
+    def _determine_room_properties(self, room_index: int) -> tuple[str, int, int]:
+        """Determine room type and size based on level progression and room index"""
+        # Higher levels have more variety and larger rooms
+        level_factor = min(self.current_level_number / 10.0, 1.0)  # Cap at level 10
+
+        # Room type probabilities change with level
+        if room_index == 0:
+            # First room is always normal (player start)
+            room_type = "normal"
+            size_modifier = 0
+        elif random.random() < 0.25 + level_factor * 0.15:  # 25-40% chance for special rooms
+            special_roll = random.random()
+            if special_roll < 0.3:
+                room_type = "treasure"
+                size_modifier = 1
+            elif special_roll < 0.6:
+                room_type = "challenge"
+                size_modifier = 2  # Challenge rooms are larger
+            else:
+                room_type = "arena"  # New room type for large battles
+                size_modifier = 3
+        else:
+            room_type = "normal"
+            size_modifier = random.choice([0, 0, 0, 1])  # Mostly normal size, occasionally larger
+
+        # Calculate room dimensions with level scaling
+        base_min = ROOM_MIN_SIZE + self.current_level_number // 5
+        base_max = ROOM_MAX_SIZE + self.current_level_number // 3
+
+        w = random.randint(base_min + size_modifier, base_max + size_modifier * 2)
+        h = random.randint(base_min + size_modifier, base_max + size_modifier * 2)
+
+        # Ensure rooms don't exceed map boundaries
+        w = min(w, self.width // 4)
+        h = min(h, self.height // 4)
+
+        return room_type, w, h
+
     def _add_boss_room(self):
         """Add a special boss room connected to the last room"""
         if not self.rooms:
@@ -170,47 +227,210 @@ class LevelGenerator:
                 return
 
     def _generate_enemies(self):
-        """Generate enemy positions based on room types and current level"""
+        """Generate enemy positions with tactical clustering and density scaling"""
         enemy_count = 0
+        self.enemy_groups = []
 
         for i, room in enumerate(self.rooms):
             # Skip the first room (player start)
             if i == 0:
                 continue
 
-            # Determine number of enemies based on room type and level
-            if room.room_type == "normal":
-                num_enemies = random.randint(1, 2 + self.current_level_number // 3)
-            elif room.room_type == "challenge":
-                num_enemies = random.randint(2, 3 + self.current_level_number // 2)
-            elif room.room_type == "boss":
-                # Boss room has one boss and some regular enemies
-                # Add boss enemy marker (we'll handle this specially)
-                self.enemy_positions.append(("boss", room.get_center()))
-                enemy_count += 1
-
-                # Add some regular enemies too
-                num_enemies = random.randint(2, 3 + self.current_level_number // 3)
-            else:  # treasure room
-                num_enemies = random.randint(0, 1)  # Few or no enemies
+            # Determine number of enemies based on room type, level, and density scaling
+            base_enemies = self._calculate_room_enemy_count(room)
+            scaled_enemies = int(base_enemies * self.enemy_density_multiplier)
 
             # Cap based on max enemies
-            num_enemies = min(num_enemies, self.max_enemies - enemy_count)
+            num_enemies = min(scaled_enemies, int(self.max_enemies) - enemy_count)
 
-            # Generate positions
-            for _ in range(num_enemies):
-                self.enemy_positions.append(room.get_random_position())
-                enemy_count += 1
+            if num_enemies <= 0:
+                continue
+
+            # Generate enemy groups for tactical placement
+            groups = self._create_enemy_groups(room, num_enemies)
+
+            for group in groups:
+                self.enemy_groups.append(group)
+                for enemy_data in group['enemies']:
+                    self.enemy_positions.append(enemy_data)
+                    enemy_count += 1
 
                 # Stop if we've reached the maximum
                 if enemy_count >= self.max_enemies:
                     return
 
+    def _calculate_room_enemy_count(self, room) -> int:
+        """Calculate base enemy count for a room based on type and level"""
+        if room.room_type == "normal":
+            return random.randint(1, 3 + self.current_level_number // 3)
+        elif room.room_type == "challenge":
+            return random.randint(3, 5 + self.current_level_number // 2)
+        elif room.room_type == "arena":
+            return random.randint(5, 8 + self.current_level_number // 2)
+        elif room.room_type == "boss":
+            # Boss room has one boss and several regular enemies
+            return random.randint(3, 5 + self.current_level_number // 3)
+        else:  # treasure room
+            return random.randint(0, 2)  # Few enemies guarding treasure
+
+    def _create_enemy_groups(self, room, total_enemies: int) -> list:
+        """Create tactical enemy groups within a room"""
+        groups = []
+        remaining_enemies = total_enemies
+
+        # Special handling for boss rooms
+        if room.room_type == "boss":
+            # Add boss enemy
+            boss_group = {
+                'type': 'boss_group',
+                'formation': 'defensive',
+                'enemies': [("boss", room.get_center())]
+            }
+
+            # Add supporting enemies around the boss
+            support_count = min(remaining_enemies - 1, 4)
+            if support_count > 0:
+                support_positions = self._generate_formation_positions(
+                    room, room.get_center(), support_count, 'defensive'
+                )
+                for pos in support_positions:
+                    boss_group['enemies'].append(pos)
+
+            groups.append(boss_group)
+            remaining_enemies -= len(boss_group['enemies'])
+
+        # Create regular enemy groups
+        while remaining_enemies > 0:
+            group_size = min(
+                random.randint(self.min_group_size, self.max_group_size),
+                remaining_enemies
+            )
+
+            if group_size <= 0:
+                break
+
+            # Choose formation type based on room and group size
+            formation = self._choose_formation(room, group_size)
+
+            # Generate group center position
+            group_center = room.get_random_position()
+
+            # Generate positions for this group
+            group_positions = self._generate_formation_positions(
+                room, group_center, group_size, formation
+            )
+
+            group = {
+                'type': 'tactical_group',
+                'formation': formation,
+                'center': group_center,
+                'enemies': group_positions
+            }
+
+            groups.append(group)
+            remaining_enemies -= group_size
+
+        return groups
+
+    def _choose_formation(self, room, group_size: int) -> str:
+        """Choose appropriate formation based on room type and group size"""
+        if room.room_type == "challenge" or room.room_type == "arena":
+            # More tactical formations in challenge rooms
+            formations = ['line', 'wedge', 'circle', 'ambush']
+        else:
+            # Simpler formations in normal rooms
+            formations = ['cluster', 'line', 'patrol']
+
+        # Larger groups prefer more complex formations
+        if group_size >= 4:
+            formations.extend(['circle', 'wedge'])
+
+        return random.choice(formations)
+
+    def _generate_formation_positions(self, room, center, count: int, formation: str) -> list:
+        """Generate enemy positions based on formation type"""
+        positions = []
+        center_x, center_y = center
+
+        if formation == 'cluster':
+            # Enemies clustered around center point
+            for i in range(count):
+                offset_x = random.randint(-30, 30)
+                offset_y = random.randint(-30, 30)
+                pos = (center_x + offset_x, center_y + offset_y)
+                # Ensure position is within room bounds
+                if room.contains_point(pos[0], pos[1]):
+                    positions.append(pos)
+                else:
+                    positions.append(room.get_random_position())
+
+        elif formation == 'line':
+            # Enemies in a line formation
+            spacing = 40
+            start_x = center_x - (count - 1) * spacing // 2
+            for i in range(count):
+                pos = (start_x + i * spacing, center_y)
+                if room.contains_point(pos[0], pos[1]):
+                    positions.append(pos)
+                else:
+                    positions.append(room.get_random_position())
+
+        elif formation == 'circle':
+            # Enemies in a circle around center
+            import math
+            radius = 50
+            for i in range(count):
+                angle = (2 * math.pi * i) / count
+                pos_x = center_x + radius * math.cos(angle)
+                pos_y = center_y + radius * math.sin(angle)
+                pos = (int(pos_x), int(pos_y))
+                if room.contains_point(pos[0], pos[1]):
+                    positions.append(pos)
+                else:
+                    positions.append(room.get_random_position())
+
+        elif formation == 'wedge':
+            # V-shaped formation
+            for i in range(count):
+                if i == 0:
+                    # Leader at the front
+                    positions.append((center_x, center_y - 20))
+                else:
+                    # Others form the wedge
+                    side = 1 if i % 2 == 1 else -1
+                    row = (i + 1) // 2
+                    pos = (center_x + side * row * 30, center_y + row * 25)
+                    if room.contains_point(pos[0], pos[1]):
+                        positions.append(pos)
+                    else:
+                        positions.append(room.get_random_position())
+
+        elif formation == 'defensive':
+            # Defensive positions around a central point (for boss support)
+            import math
+            radius = 80
+            for i in range(count):
+                angle = (2 * math.pi * i) / count
+                pos_x = center_x + radius * math.cos(angle)
+                pos_y = center_y + radius * math.sin(angle)
+                pos = (int(pos_x), int(pos_y))
+                if room.contains_point(pos[0], pos[1]):
+                    positions.append(pos)
+                else:
+                    positions.append(room.get_random_position())
+
+        else:  # 'ambush', 'patrol', or fallback
+            # Random positions within room
+            for _ in range(count):
+                positions.append(room.get_random_position())
+
+        return positions
+
     def _generate_items(self):
         """Generate item positions based on room types"""
         item_count = 0
 
-        for i, room in enumerate(self.rooms):
+        for room in self.rooms:
             # Determine number of items based on room type
             if room.room_type == "normal":
                 num_items = random.randint(0, 1)
@@ -218,6 +438,8 @@ class LevelGenerator:
                 num_items = random.randint(2, 3)  # More items in treasure rooms
             elif room.room_type == "challenge":
                 num_items = 1  # One reward for challenge rooms
+            elif room.room_type == "arena":
+                num_items = random.randint(1, 2)  # Rewards for arena battles
             elif room.room_type == "boss":
                 num_items = random.randint(2, 3)  # Good rewards in boss rooms
             else:

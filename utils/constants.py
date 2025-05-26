@@ -115,15 +115,15 @@ ACHIEVEMENT_CHAINS = {
     }
 }
 
-# Level generation
-LEVEL_WIDTH = 60  # in tiles (increased for fullscreen support)
-LEVEL_HEIGHT = 45  # in tiles (increased for fullscreen support)
-ROOM_MAX_SIZE = 12  # Increased from 10
-ROOM_MIN_SIZE = 6
-MAX_ROOMS = 35  # Increased for larger levels
+# Level generation - Enhanced for progressive scaling
+LEVEL_WIDTH = 60  # in tiles (base size, will scale with level)
+LEVEL_HEIGHT = 45  # in tiles (base size, will scale with level)
+ROOM_MAX_SIZE = 12  # Base maximum room size
+ROOM_MIN_SIZE = 6   # Base minimum room size
+MAX_ROOMS = 35      # Base number of rooms (will scale with level)
 MAX_ENEMIES_BASE = 10  # Base number of enemies
 ENEMY_SCALING_FACTOR = 2  # Additional enemies per level
-MAX_ENEMIES_CAP = 30  # Maximum enemies regardless of level
+MAX_ENEMIES_CAP = 60  # Maximum enemies regardless of level (increased for larger maps)
 
 # Boss enemy settings
 BOSS_HEALTH_MULTIPLIER = 3.0  # Boss health multiplier

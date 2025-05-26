@@ -57,8 +57,27 @@ class Enemy(Entity):
         self.prediction_accuracy = random.uniform(0.1, 0.8)  # How well it predicts player movement
         self.flanking_behavior = random.choice([True, False])  # Whether it tries to flank
 
+        # Group coordination and AI roles
+        self.group_id = None  # Will be set by level generator
+        self.role = self._determine_role()  # leader, follower, support, scout
+        self.formation_position = None  # Position within group formation
+        self.group_members = []  # References to other enemies in the same group
+        self.coordination_range = 200  # Range for group coordination
+
+        # Advanced AI state tracking
+        self.ai_difficulty = 1.0  # Will be adjusted based on player performance
+        self.last_coordination_time = 0
+        self.coordination_cooldown = 1000  # ms between coordination attempts
+
         # Create a smaller collision rectangle for better movement
         self.collision_rect = self.rect.inflate(-4, -4)
+
+        # Visual differentiation based on enemy type
+        self.base_color = self._get_enemy_color()
+        self.current_color = self.base_color
+        self.visual_state = "normal"  # normal, aggressive, retreating, coordinating
+        self.color_transition_speed = 5  # Speed of color transitions
+        self.state_indicator_alpha = 0  # Alpha for state indicators
 
     def _apply_enemy_type_modifiers(self, difficulty_level: int) -> None:
         """Apply stat modifiers based on enemy type"""
@@ -104,6 +123,36 @@ class Enemy(Entity):
             return 150.0
         else:  # normal
             return 180.0
+
+    def _determine_role(self) -> str:
+        """Determine the enemy's role within a group based on type and stats"""
+        if self.enemy_type == "tank":
+            return random.choice(["leader", "support"])  # Tanks often lead or support
+        elif self.enemy_type == "sniper":
+            return random.choice(["support", "scout"])  # Snipers provide support or scout
+        elif self.enemy_type == "fast":
+            return random.choice(["scout", "flanker"])  # Fast enemies scout or flank
+        elif self.enemy_type == "berserker":
+            return random.choice(["assault", "follower"])  # Berserkers assault or follow
+        else:  # normal
+            return random.choice(["follower", "support", "assault"])
+
+    def set_group_info(self, group_id: str, group_members: list, formation_position: tuple = None):
+        """Set group coordination information"""
+        self.group_id = group_id
+        self.group_members = [member for member in group_members if member != self]
+        self.formation_position = formation_position
+
+    def _get_enemy_color(self) -> tuple:
+        """Get the base color for this enemy type"""
+        color_map = {
+            "normal": (255, 100, 100),    # Red
+            "fast": (100, 255, 100),      # Green
+            "tank": (100, 100, 255),      # Blue
+            "sniper": (255, 255, 100),    # Yellow
+            "berserker": (255, 100, 255)  # Magenta
+        }
+        return color_map.get(self.enemy_type, (255, 100, 100))
 
     def update(self, player, walls, projectiles_group):
         """Update enemy based on improved AI behavior"""
@@ -208,9 +257,20 @@ class Enemy(Entity):
             self.velocity = self.idle_direction * self.speed
             self.move(self.velocity.x, self.velocity.y, walls)
 
+        # Group coordination behavior
+        current_time = pygame.time.get_ticks()
+        if (self.group_coordination and self.group_members and
+            current_time - self.last_coordination_time > self.coordination_cooldown):
+            self._execute_group_coordination(player, current_time)
+            self.last_coordination_time = current_time
+
         # Enhanced shooting behavior based on state and enemy type
         if self.state in ["attack", "retreat"] and self.can_shoot() and self.can_see_player:
             self._execute_shooting_behavior(player, projectiles_group)
+
+        # Update visual state and color transitions
+        self._update_visual_state()
+        self._update_color_transitions()
 
     def _choose_random_direction(self):
         """Choose a random direction for movement"""
@@ -428,6 +488,232 @@ class Enemy(Entity):
             # Standard shooting behavior
             self.shoot(player.rect.centerx, player.rect.centery, projectiles_group)
 
+    def _execute_group_coordination(self, player, current_time: int) -> None:
+        """Execute group coordination behaviors based on role and situation"""
+        if not self.group_members:
+            return
+
+        player_pos = pygame.math.Vector2(player.rect.center)
+        my_pos = pygame.math.Vector2(self.rect.center)
+
+        # Count nearby group members
+        nearby_members = []
+        for member in self.group_members:
+            if hasattr(member, 'rect'):  # Ensure member is still alive
+                member_pos = pygame.math.Vector2(member.rect.center)
+                if my_pos.distance_to(member_pos) <= self.coordination_range:
+                    nearby_members.append(member)
+
+        if not nearby_members:
+            return
+
+        # Role-based coordination behavior
+        if self.role == "leader":
+            self._coordinate_as_leader(player_pos, nearby_members)
+        elif self.role == "scout":
+            self._coordinate_as_scout(player_pos, nearby_members)
+        elif self.role == "support":
+            self._coordinate_as_support(player_pos, nearby_members)
+        elif self.role == "flanker":
+            self._coordinate_as_flanker(player_pos, nearby_members)
+        else:  # follower, assault
+            self._coordinate_as_follower(player_pos, nearby_members)
+
+    def _coordinate_as_leader(self, player_pos: pygame.math.Vector2, nearby_members: list) -> None:
+        """Leader coordination - direct group tactics"""
+        # Leaders try to position themselves optimally and signal others
+        if len(nearby_members) >= 2:
+            # If we have enough members, try to coordinate a flanking maneuver
+            if random.random() < 0.3:  # 30% chance to initiate flanking
+                self._signal_flanking_maneuver(player_pos, nearby_members)
+
+        # Leaders maintain formation and don't retreat easily
+        if self.retreat_threshold > 0:
+            self.retreat_threshold *= 0.7  # Leaders retreat less
+
+    def _coordinate_as_scout(self, player_pos: pygame.math.Vector2, nearby_members: list) -> None:
+        """Scout coordination - information gathering and positioning"""
+        # Scouts try to maintain distance and provide overwatch
+        my_pos = pygame.math.Vector2(self.rect.center)
+        distance_to_player = my_pos.distance_to(player_pos)
+
+        if distance_to_player < self.preferred_range * 1.5:
+            # Scout is too close, try to reposition
+            retreat_direction = my_pos - player_pos
+            if retreat_direction.length() > 0:
+                retreat_direction.normalize_ip()
+                # Modify velocity to maintain scouting position
+                self.velocity += retreat_direction * (self.speed * 0.3)
+
+    def _coordinate_as_support(self, player_pos: pygame.math.Vector2, nearby_members: list) -> None:
+        """Support coordination - assist other group members"""
+        # Support units try to stay behind other members and provide covering fire
+        my_pos = pygame.math.Vector2(self.rect.center)
+
+        # Find the closest member to the player
+        closest_member = None
+        closest_distance = float('inf')
+
+        for member in nearby_members:
+            if hasattr(member, 'rect'):
+                member_pos = pygame.math.Vector2(member.rect.center)
+                distance = member_pos.distance_to(player_pos)
+                if distance < closest_distance:
+                    closest_distance = distance
+                    closest_member = member
+
+        if closest_member:
+            # Position behind the closest member
+            member_pos = pygame.math.Vector2(closest_member.rect.center)
+            support_direction = member_pos - player_pos
+            if support_direction.length() > 0:
+                support_direction.normalize_ip()
+                ideal_position = member_pos + support_direction * 60
+                move_direction = ideal_position - my_pos
+                if move_direction.length() > 20:  # Only move if significantly out of position
+                    move_direction.normalize_ip()
+                    self.velocity += move_direction * (self.speed * 0.2)
+
+    def _coordinate_as_flanker(self, player_pos: pygame.math.Vector2, nearby_members: list) -> None:
+        """Flanker coordination - attempt to get behind or to the side of player"""
+        my_pos = pygame.math.Vector2(self.rect.center)
+
+        # Try to move to the player's flank
+        to_player = player_pos - my_pos
+        if to_player.length() > 0:
+            # Calculate perpendicular direction for flanking
+            perpendicular = pygame.math.Vector2(-to_player.y, to_player.x)
+            perpendicular.normalize_ip()
+
+            # Choose left or right flank based on current position
+            if random.random() < 0.5:
+                perpendicular *= -1
+
+            # Combine approach and flanking movement
+            flank_direction = (to_player.normalize() * 0.3 + perpendicular * 0.7)
+            self.velocity += flank_direction * (self.speed * 0.4)
+
+    def _coordinate_as_follower(self, player_pos: pygame.math.Vector2, nearby_members: list) -> None:
+        """Follower coordination - follow group leader or strongest member"""
+        my_pos = pygame.math.Vector2(self.rect.center)
+
+        # Find a leader or strong member to follow
+        leader = None
+        for member in nearby_members:
+            if hasattr(member, 'role') and member.role == "leader":
+                leader = member
+                break
+
+        if not leader:
+            # No leader found, follow the strongest member (tank or highest health)
+            strongest_member = None
+            max_health = 0
+            for member in nearby_members:
+                if hasattr(member, 'health') and member.health > max_health:
+                    max_health = member.health
+                    strongest_member = member
+            leader = strongest_member
+
+        if leader and hasattr(leader, 'rect'):
+            # Follow the leader but maintain some distance
+            leader_pos = pygame.math.Vector2(leader.rect.center)
+            distance_to_leader = my_pos.distance_to(leader_pos)
+
+            if distance_to_leader > 80:  # Too far from leader
+                follow_direction = leader_pos - my_pos
+                follow_direction.normalize_ip()
+                self.velocity += follow_direction * (self.speed * 0.3)
+            elif distance_to_leader < 40:  # Too close to leader
+                avoid_direction = my_pos - leader_pos
+                avoid_direction.normalize_ip()
+                self.velocity += avoid_direction * (self.speed * 0.2)
+
+    def _signal_flanking_maneuver(self, player_pos: pygame.math.Vector2, nearby_members: list) -> None:
+        """Signal nearby members to execute a flanking maneuver"""
+        # This is a simplified signaling system - in a more complex implementation,
+        # this could involve setting flags on other enemies or using a message system
+        flankers = [member for member in nearby_members
+                   if hasattr(member, 'role') and member.role in ["flanker", "scout", "assault"]]
+
+        if len(flankers) >= 1:
+            # Encourage flankers to move to player's sides
+            for flanker in flankers[:2]:  # Limit to 2 flankers
+                if hasattr(flanker, 'flanking_behavior'):
+                    flanker.flanking_behavior = True
+                    # Temporarily increase their aggression
+                    if hasattr(flanker, 'aggression_level'):
+                        flanker.aggression_level = min(1.0, flanker.aggression_level + 0.2)
+
+    def _update_visual_state(self) -> None:
+        """Update visual state based on current AI state and behavior"""
+        current_health_percentage = self.health / self.max_health
+
+        # Determine visual state based on AI state and health
+        if self.state == "retreat" or current_health_percentage < self.retreat_threshold:
+            self.visual_state = "retreating"
+        elif self.state == "attack" and self.aggression_level > 0.7:
+            self.visual_state = "aggressive"
+        elif self.group_coordination and self.group_members:
+            # Check if we're actively coordinating
+            nearby_count = sum(1 for member in self.group_members
+                             if hasattr(member, 'rect') and
+                             pygame.math.Vector2(self.rect.center).distance_to(
+                                 pygame.math.Vector2(member.rect.center)) <= self.coordination_range)
+            if nearby_count >= 2:
+                self.visual_state = "coordinating"
+            else:
+                self.visual_state = "normal"
+        else:
+            self.visual_state = "normal"
+
+    def _update_color_transitions(self) -> None:
+        """Update color transitions based on visual state"""
+        target_color = self.base_color
+
+        # Modify color based on visual state
+        if self.visual_state == "aggressive":
+            # Brighter, more intense colors when aggressive
+            target_color = tuple(min(255, int(c * 1.3)) for c in self.base_color)
+        elif self.visual_state == "retreating":
+            # Darker, muted colors when retreating
+            target_color = tuple(max(50, int(c * 0.6)) for c in self.base_color)
+        elif self.visual_state == "coordinating":
+            # Slight blue tint when coordinating
+            r, g, b = self.base_color
+            target_color = (max(50, int(r * 0.8)), max(50, int(g * 0.8)), min(255, int(b * 1.2)))
+
+        # Smooth color transition
+        current_r, current_g, current_b = self.current_color
+        target_r, target_g, target_b = target_color
+
+        # Interpolate towards target color
+        speed = self.color_transition_speed
+        new_r = current_r + (target_r - current_r) / speed
+        new_g = current_g + (target_g - current_g) / speed
+        new_b = current_b + (target_b - current_b) / speed
+
+        self.current_color = (int(new_r), int(new_g), int(new_b))
+
+    def get_visual_indicators(self) -> dict:
+        """Get visual indicators for rendering (state icons, effects, etc.)"""
+        indicators = {
+            'color': self.current_color,
+            'state': self.visual_state,
+            'type': self.enemy_type,
+            'role': self.role,
+            'health_percentage': min(1.0, max(0.0, self.health / self.max_health))
+        }
+
+        # Add special indicators based on state
+        if self.visual_state == "aggressive":
+            indicators['effect'] = 'aggressive_aura'
+        elif self.visual_state == "retreating":
+            indicators['effect'] = 'retreat_indicator'
+        elif self.visual_state == "coordinating":
+            indicators['effect'] = 'coordination_lines'
+
+        return indicators
+
     def shoot(self, target_x, target_y, projectiles_group):
         """Shoot a projectile towards the target position"""
         # Calculate direction vector
@@ -499,3 +785,93 @@ class Enemy(Entity):
                     self.visual_effects.screen_effects.add_screen_shake(intensity=4.0, duration=8)
 
         return result
+
+    def draw(self, screen):
+        """Draw the enemy with enhanced visual differentiation"""
+        # Draw main enemy body with current color
+        pygame.draw.rect(screen, self.current_color, self.rect)
+
+        # Draw type indicator (small shape in corner)
+        self._draw_type_indicator(screen)
+
+        # Draw state effects
+        self._draw_state_effects(screen)
+
+        # Draw health bar if damaged
+        if self.health < self.max_health:
+            self._draw_health_bar(screen)
+
+    def _draw_type_indicator(self, screen):
+        """Draw a small indicator showing enemy type"""
+        indicator_size = 6
+        x, y = self.rect.topleft
+
+        if self.enemy_type == "fast":
+            # Triangle for fast enemies
+            points = [(x + 2, y + 2), (x + 8, y + 2), (x + 5, y + 8)]
+            pygame.draw.polygon(screen, (255, 255, 255), points)
+        elif self.enemy_type == "tank":
+            # Square for tank enemies
+            pygame.draw.rect(screen, (255, 255, 255), (x + 2, y + 2, indicator_size, indicator_size))
+        elif self.enemy_type == "sniper":
+            # Cross for sniper enemies
+            pygame.draw.line(screen, (255, 255, 255), (x + 2, y + 5), (x + 8, y + 5), 2)
+            pygame.draw.line(screen, (255, 255, 255), (x + 5, y + 2), (x + 5, y + 8), 2)
+        elif self.enemy_type == "berserker":
+            # X for berserker enemies
+            pygame.draw.line(screen, (255, 255, 255), (x + 2, y + 2), (x + 8, y + 8), 2)
+            pygame.draw.line(screen, (255, 255, 255), (x + 8, y + 2), (x + 2, y + 8), 2)
+        # Normal enemies have no special indicator
+
+    def _draw_state_effects(self, screen):
+        """Draw visual effects based on current state"""
+        center_x, center_y = self.rect.center
+
+        if self.visual_state == "aggressive":
+            # Pulsing red aura for aggressive enemies
+            import math
+            pulse = int(20 + 10 * math.sin(pygame.time.get_ticks() * 0.01))
+            # Draw aura as a larger rectangle behind the enemy
+            aura_rect = self.rect.inflate(pulse, pulse)
+            # Create a surface for alpha blending
+            aura_surface = pygame.Surface((aura_rect.width, aura_rect.height))
+            aura_surface.set_alpha(100)
+            aura_surface.fill((255, 100, 100))
+            screen.blit(aura_surface, aura_rect.topleft)
+
+        elif self.visual_state == "retreating":
+            # Yellow warning triangle above retreating enemies
+            triangle_points = [
+                (center_x, center_y - 25),
+                (center_x - 8, center_y - 15),
+                (center_x + 8, center_y - 15)
+            ]
+            pygame.draw.polygon(screen, (255, 255, 0), triangle_points)
+
+        elif self.visual_state == "coordinating":
+            # Blue coordination indicator
+            pygame.draw.circle(screen, (100, 150, 255), (center_x, center_y - 20), 5)
+
+    def _draw_health_bar(self, screen):
+        """Draw a health bar above the enemy"""
+        bar_width = self.rect.width
+        bar_height = 4
+        bar_x = self.rect.x
+        bar_y = self.rect.y - 8
+
+        # Background (red)
+        pygame.draw.rect(screen, (100, 0, 0), (bar_x, bar_y, bar_width, bar_height))
+
+        # Health (green to red gradient based on health percentage)
+        health_percentage = self.health / self.max_health
+        health_width = int(bar_width * health_percentage)
+
+        if health_percentage > 0.6:
+            health_color = (0, 255, 0)  # Green
+        elif health_percentage > 0.3:
+            health_color = (255, 255, 0)  # Yellow
+        else:
+            health_color = (255, 0, 0)  # Red
+
+        if health_width > 0:
+            pygame.draw.rect(screen, health_color, (bar_x, bar_y, health_width, bar_height))
