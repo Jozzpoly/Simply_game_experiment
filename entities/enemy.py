@@ -38,29 +38,72 @@ class Enemy(Entity):
         self.random_move_timer = 0
         self.random_move_duration = random.randint(1000, 3000)  # milliseconds
 
-        # Enemy type and behavior
-        self.enemy_type = random.choice(["normal", "fast", "tank"])
-        if self.enemy_type == "fast":
-            self.speed += 1
-            self.health *= 0.7
-            self.damage *= 0.8
-            self.xp_reward = int(XP_PER_ENEMY_FAST * (XP_DIFFICULTY_MULTIPLIER ** (difficulty_level - 1)))
-        elif self.enemy_type == "tank":
-            self.speed -= 0.5
-            self.health *= 1.5
-            self.damage *= 1.2
-            self.xp_reward = int(XP_PER_ENEMY_TANK * (XP_DIFFICULTY_MULTIPLIER ** (difficulty_level - 1)))
-        else:  # normal
-            self.xp_reward = int(XP_PER_ENEMY_BASE * (XP_DIFFICULTY_MULTIPLIER ** (difficulty_level - 1)))
+        # Enhanced enemy type and behavior system
+        self.enemy_type = random.choice(["normal", "fast", "tank", "sniper", "berserker"])
+
+        # Initialize default AI properties (will be modified by type)
+        self.aggression_level = random.uniform(0.3, 1.0)  # How aggressive the enemy is
+        self.retreat_threshold = 0.2  # Health percentage to start retreating
+        self.group_coordination = True  # Whether this enemy coordinates with others
+
+        # Apply type-specific modifiers
+        self._apply_enemy_type_modifiers(difficulty_level)
+
+        # Set preferred range after type is determined
+        self.preferred_range = self._get_preferred_combat_range()
+
+        # Tactical behavior
+        self.last_player_position = None
+        self.prediction_accuracy = random.uniform(0.1, 0.8)  # How well it predicts player movement
+        self.flanking_behavior = random.choice([True, False])  # Whether it tries to flank
 
         # Create a smaller collision rectangle for better movement
         self.collision_rect = self.rect.inflate(-4, -4)
 
-        # Audio manager reference (will be set by level)
-        self.audio_manager = None
+    def _apply_enemy_type_modifiers(self, difficulty_level: int) -> None:
+        """Apply stat modifiers based on enemy type"""
+        if self.enemy_type == "fast":
+            self.speed += 1.5
+            self.health *= 0.6
+            self.damage *= 0.8
+            self.fire_rate = int(self.fire_rate * 0.8)  # Faster shooting
+            self.xp_reward = int(XP_PER_ENEMY_FAST * (XP_DIFFICULTY_MULTIPLIER ** (difficulty_level - 1)))
+        elif self.enemy_type == "tank":
+            self.speed -= 0.8
+            self.health *= 2.0
+            self.damage *= 1.3
+            self.fire_rate = int(self.fire_rate * 1.5)  # Slower shooting
+            self.xp_reward = int(XP_PER_ENEMY_TANK * (XP_DIFFICULTY_MULTIPLIER ** (difficulty_level - 1)))
+        elif self.enemy_type == "sniper":
+            self.speed -= 0.3
+            self.health *= 0.8
+            self.damage *= 1.8
+            self.fire_rate = int(self.fire_rate * 2.0)  # Much slower but powerful shots
+            self.detection_radius = 400  # Longer range
+            self.xp_reward = int(XP_PER_ENEMY_SNIPER * (XP_DIFFICULTY_MULTIPLIER ** (difficulty_level - 1)))
+        elif self.enemy_type == "berserker":
+            self.speed += 0.8
+            self.health *= 1.2
+            self.damage *= 1.5
+            self.fire_rate = int(self.fire_rate * 0.6)  # Very fast shooting
+            self.aggression_level = 1.0  # Always aggressive
+            self.retreat_threshold = 0.0  # Never retreats
+            self.xp_reward = int(XP_PER_ENEMY_BERSERKER * (XP_DIFFICULTY_MULTIPLIER ** (difficulty_level - 1)))
+        else:  # normal
+            self.xp_reward = int(XP_PER_ENEMY_BASE * (XP_DIFFICULTY_MULTIPLIER ** (difficulty_level - 1)))
 
-        # Visual effects reference (will be set by level)
-        self.visual_effects = None
+    def _get_preferred_combat_range(self) -> float:
+        """Get the preferred combat range based on enemy type"""
+        if self.enemy_type == "sniper":
+            return 250.0
+        elif self.enemy_type == "tank":
+            return 120.0
+        elif self.enemy_type == "berserker":
+            return 80.0
+        elif self.enemy_type == "fast":
+            return 150.0
+        else:  # normal
+            return 180.0
 
     def update(self, player, walls, projectiles_group):
         """Update enemy based on improved AI behavior"""
@@ -85,26 +128,32 @@ class Enemy(Entity):
         # Current time for timers
         current_time = pygame.time.get_ticks()
 
-        # State machine for enemy behavior
+        # Enhanced state machine for enemy behavior
+        current_health_percentage = self.health / self.max_health
+
+        # Check if enemy should retreat based on health and type
+        should_retreat = (current_health_percentage < self.retreat_threshold and
+                         self.enemy_type != "berserker")
+
         if distance_to_player <= self.detection_radius and self.can_see_player:
-            # Player is within detection radius and visible
-            if distance_to_player <= 200:
-                # Player is close, attack
-                self.state = "attack"
-                # Try to maintain optimal distance
-                if distance_to_player < 100:
-                    # Move away from player
-                    self.velocity = enemy_pos - player_pos
-                    if self.velocity.length() > 0:
-                        self.velocity.normalize_ip()
-                        self.velocity *= self.speed * 0.5
-            else:
-                # Player is detected but not too close, chase
-                self.state = "chase"
-                self.velocity = player_pos - enemy_pos
+            # Store player position for prediction
+            self.last_player_position = player_pos.copy()
+
+            if should_retreat:
+                # Retreat behavior - move away from player
+                self.state = "retreat"
+                self.velocity = enemy_pos - player_pos
                 if self.velocity.length() > 0:
                     self.velocity.normalize_ip()
-                    self.velocity *= self.speed
+                    self.velocity *= self.speed * 1.2  # Retreat faster
+            elif distance_to_player <= self.preferred_range:
+                # Within preferred combat range
+                self.state = "attack"
+                self._execute_combat_behavior(player_pos, enemy_pos, distance_to_player)
+            else:
+                # Player is detected but not in range, approach
+                self.state = "chase"
+                self._execute_chase_behavior(player_pos, enemy_pos)
         else:
             # Player is not detected or not visible
             # Use pathfinding if player is within range but not visible
@@ -159,9 +208,9 @@ class Enemy(Entity):
             self.velocity = self.idle_direction * self.speed
             self.move(self.velocity.x, self.velocity.y, walls)
 
-        # Shoot at player if in attack state and can see player
-        if self.state == "attack" and self.can_shoot() and self.can_see_player:
-            self.shoot(player.rect.centerx, player.rect.centery, projectiles_group)
+        # Enhanced shooting behavior based on state and enemy type
+        if self.state in ["attack", "retreat"] and self.can_shoot() and self.can_see_player:
+            self._execute_shooting_behavior(player, projectiles_group)
 
     def _choose_random_direction(self):
         """Choose a random direction for movement"""
@@ -278,6 +327,106 @@ class Enemy(Entity):
         if waypoints:
             self.path = [waypoints[0], player.rect.center]
             self.path_index = 0
+
+    def _execute_combat_behavior(self, player_pos: pygame.math.Vector2,
+                                enemy_pos: pygame.math.Vector2, distance: float) -> None:
+        """Execute combat behavior based on enemy type and situation"""
+        if self.enemy_type == "sniper":
+            # Snipers try to maintain maximum range and stay stationary when shooting
+            if distance < self.preferred_range * 0.8:
+                # Too close, back away
+                self.velocity = enemy_pos - player_pos
+                if self.velocity.length() > 0:
+                    self.velocity.normalize_ip()
+                    self.velocity *= self.speed * 0.7
+            else:
+                # Good range, stay still for accuracy
+                self.velocity = pygame.math.Vector2(0, 0)
+
+        elif self.enemy_type == "berserker":
+            # Berserkers charge directly at the player
+            self.velocity = player_pos - enemy_pos
+            if self.velocity.length() > 0:
+                self.velocity.normalize_ip()
+                self.velocity *= self.speed * self.aggression_level
+
+        elif self.enemy_type == "fast":
+            # Fast enemies use hit-and-run tactics
+            if self.flanking_behavior and random.random() < 0.3:
+                # Try to circle around the player
+                perpendicular = pygame.math.Vector2(-(player_pos.y - enemy_pos.y),
+                                                  player_pos.x - enemy_pos.x)
+                if perpendicular.length() > 0:
+                    perpendicular.normalize_ip()
+                    self.velocity = perpendicular * self.speed
+            else:
+                # Standard approach
+                self.velocity = player_pos - enemy_pos
+                if self.velocity.length() > 0:
+                    self.velocity.normalize_ip()
+                    self.velocity *= self.speed
+
+        else:  # tank or normal
+            # Try to maintain optimal distance
+            if distance < self.preferred_range * 0.7:
+                # Too close, back away slightly
+                self.velocity = enemy_pos - player_pos
+                if self.velocity.length() > 0:
+                    self.velocity.normalize_ip()
+                    self.velocity *= self.speed * 0.5
+            elif distance > self.preferred_range * 1.2:
+                # Too far, move closer
+                self.velocity = player_pos - enemy_pos
+                if self.velocity.length() > 0:
+                    self.velocity.normalize_ip()
+                    self.velocity *= self.speed * 0.8
+            else:
+                # Good range, minimal movement
+                self.velocity *= 0.3
+
+    def _execute_chase_behavior(self, player_pos: pygame.math.Vector2,
+                               enemy_pos: pygame.math.Vector2) -> None:
+        """Execute chase behavior with prediction and flanking"""
+        # Basic chase direction
+        chase_direction = player_pos - enemy_pos
+
+        # Add movement prediction for smarter enemies
+        if self.last_player_position and self.prediction_accuracy > 0.5:
+            player_velocity = player_pos - self.last_player_position
+            predicted_position = player_pos + (player_velocity * self.prediction_accuracy)
+            chase_direction = predicted_position - enemy_pos
+
+        # Apply flanking behavior for certain enemy types
+        if self.flanking_behavior and self.enemy_type in ["fast", "normal"]:
+            if random.random() < 0.2:  # 20% chance to flank
+                # Add perpendicular component for flanking
+                perpendicular = pygame.math.Vector2(-chase_direction.y, chase_direction.x)
+                if perpendicular.length() > 0:
+                    perpendicular.normalize_ip()
+                    chase_direction += perpendicular * 0.5
+
+        if chase_direction.length() > 0:
+            chase_direction.normalize_ip()
+            self.velocity = chase_direction * self.speed
+
+    def _execute_shooting_behavior(self, player, projectiles_group) -> None:
+        """Execute shooting behavior based on enemy type and state"""
+        if self.enemy_type == "sniper":
+            # Snipers aim more carefully and predict movement
+            if self.last_player_position:
+                player_velocity = pygame.math.Vector2(player.rect.center) - self.last_player_position
+                predicted_pos = pygame.math.Vector2(player.rect.center) + (player_velocity * 2)
+                self.shoot(predicted_pos.x, predicted_pos.y, projectiles_group)
+            else:
+                self.shoot(player.rect.centerx, player.rect.centery, projectiles_group)
+
+        elif self.enemy_type == "berserker" and self.state == "attack":
+            # Berserkers shoot rapidly when in attack mode
+            self.shoot(player.rect.centerx, player.rect.centery, projectiles_group)
+
+        else:
+            # Standard shooting behavior
+            self.shoot(player.rect.centerx, player.rect.centery, projectiles_group)
 
     def shoot(self, target_x, target_y, projectiles_group):
         """Shoot a projectile towards the target position"""

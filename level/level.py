@@ -7,8 +7,10 @@ from entities.enemy import Enemy
 from entities.boss_enemy import BossEnemy
 from entities.item import create_random_item
 from utils.constants import *
+from config import DEFAULT_ZOOM_LEVEL, MIN_ZOOM_LEVEL, MAX_ZOOM_LEVEL
 from utils.visual_effects import VisualEffectsManager
 from utils.animation_system import AnimationManager
+from ui.enhanced_hud import ModernHUD
 
 # Configure logging for level module
 logger = logging.getLogger(__name__)
@@ -55,9 +57,12 @@ class Level:
         self.player: Optional[Player] = None
         self.player_level_up: bool = False  # Flag to indicate player leveled up
 
-        # Camera offset
+        # Camera offset and zoom
         self.camera_offset_x: int = 0
         self.camera_offset_y: int = 0
+        self.zoom_level: float = DEFAULT_ZOOM_LEVEL  # Configurable default zoom
+        self.min_zoom: float = MIN_ZOOM_LEVEL        # Configurable minimum zoom
+        self.max_zoom: float = MAX_ZOOM_LEVEL        # Configurable maximum zoom
 
         # Minimap
         self.minimap_surface: Optional[pygame.Surface] = None
@@ -68,6 +73,7 @@ class Level:
         # Enhanced visual systems
         self.visual_effects: VisualEffectsManager = VisualEffectsManager()
         self.animation_manager: AnimationManager = AnimationManager()
+        self.modern_hud: Optional[ModernHUD] = None
 
         # XP gain message (will be migrated to animation manager)
         self.xp_messages: List[Dict[str, Any]] = []
@@ -318,6 +324,27 @@ class Level:
         if (old_offset_x != self.camera_offset_x or old_offset_y != self.camera_offset_y):
             self._cache_dirty = True
 
+    def handle_zoom(self, zoom_delta: float, mouse_x: int, mouse_y: int) -> None:
+        """Handle zoom in/out with mouse wheel, zooming towards mouse position"""
+        old_zoom = self.zoom_level
+
+        # Apply zoom change
+        self.zoom_level += zoom_delta
+        self.zoom_level = max(self.min_zoom, min(self.max_zoom, self.zoom_level))
+
+        # If zoom actually changed, adjust camera to zoom towards mouse position
+        if old_zoom != self.zoom_level and self.player:
+            # Calculate world position of mouse before zoom
+            world_mouse_x = mouse_x + self.camera_offset_x
+            world_mouse_y = mouse_y + self.camera_offset_y
+
+            # Update camera to keep mouse position consistent
+            self.camera_offset_x = int(world_mouse_x - mouse_x)
+            self.camera_offset_y = int(world_mouse_y - mouse_y)
+
+            # Mark cache as dirty since zoom changed
+            self._cache_dirty = True
+
     def _update_visible_sprites_cache(self, screen_width: int, screen_height: int) -> None:
         """Update the cache of visible sprites for optimized rendering"""
         self._visible_sprites_cache.clear()
@@ -424,15 +451,26 @@ class Level:
         self.generate_minimap(tiles)
 
     def draw(self, screen: pygame.Surface, score: int = 0, current_level: int = 1) -> None:
-        """Draw the level and all entities with optimized sprite culling"""
+        """Draw the level and all entities with optimized sprite culling and zoom support"""
         # Get current screen dimensions
         screen_width, screen_height = screen.get_size()
 
-        # Fill background with a dark pattern instead of pure black
-        screen.fill((20, 20, 20))  # Very dark gray instead of pure black
+        # Initialize modern HUD if not already done
+        if self.modern_hud is None:
+            self.modern_hud = ModernHUD(screen_width, screen_height)
 
-        # Draw a subtle background pattern to fill empty areas
-        self._draw_background_pattern(screen, screen_width, screen_height)
+        # Create a surface for the game world (before zoom)
+        if self.zoom_level != 1.0:
+            # Create a surface to draw the game world on
+            world_surface = pygame.Surface((screen_width, screen_height))
+            world_surface.fill((20, 20, 20))  # Very dark gray instead of pure black
+            self._draw_background_pattern(world_surface, screen_width, screen_height)
+            game_surface = world_surface
+        else:
+            # Draw directly to screen if no zoom
+            screen.fill((20, 20, 20))  # Very dark gray instead of pure black
+            self._draw_background_pattern(screen, screen_width, screen_height)
+            game_surface = screen
 
         # Update visible sprites cache if camera moved or cache is dirty
         current_camera_pos = (self.camera_offset_x, self.camera_offset_y)
@@ -445,7 +483,7 @@ class Level:
         for sprite in self._visible_sprites_cache:
             sprite_x = sprite.rect.x - self.camera_offset_x
             sprite_y = sprite.rect.y - self.camera_offset_y
-            screen.blit(sprite.image, (sprite_x, sprite_y))
+            game_surface.blit(sprite.image, (sprite_x, sprite_y))
 
         # Draw projectiles with trails and camera offset (with culling)
         for projectile in self.projectiles:
@@ -456,10 +494,10 @@ class Level:
             if (-projectile.rect.width <= proj_x <= screen_width and
                 -projectile.rect.height <= proj_y <= screen_height):
                 if hasattr(projectile, 'draw'):
-                    projectile.draw(screen, self.camera_offset_x, self.camera_offset_y)
+                    projectile.draw(game_surface, self.camera_offset_x, self.camera_offset_y)
                 else:
                     # Fallback for projectiles without custom draw method
-                    screen.blit(projectile.image, (proj_x, proj_y))
+                    game_surface.blit(projectile.image, (proj_x, proj_y))
 
         # Draw health bars for visible enemies only
         for enemy in self.enemies:
@@ -468,7 +506,7 @@ class Level:
 
             if (-enemy.rect.width <= enemy_x <= screen_width and
                 -enemy.rect.height <= enemy_y <= screen_height):
-                enemy.draw_health_bar(screen, self.camera_offset_x, self.camera_offset_y)
+                enemy.draw_health_bar(game_surface, self.camera_offset_x, self.camera_offset_y)
 
         # Draw XP messages (with culling and memory management)
         if self.xp_messages:  # Only create font if we have messages
@@ -481,62 +519,37 @@ class Level:
                 if (-50 <= msg_x <= screen_width + 50 and -50 <= msg_y <= screen_height + 50):
                     text_surface = font.render(message['text'], True, message['color'])
                     text_rect = text_surface.get_rect(center=(msg_x, msg_y))
-                    screen.blit(text_surface, text_rect)
+                    game_surface.blit(text_surface, text_rect)
 
-        # Draw player health bar at fixed position on screen
-        pygame.draw.rect(screen, RED, (10, 10, 200, 20))
-        health_width = int(200 * (self.player.health / self.player.max_health))
-        pygame.draw.rect(screen, GREEN, (10, 10, health_width, 20))
+        # Draw visual effects and animations on game surface
+        self.visual_effects.draw(game_surface, self.camera_offset_x, self.camera_offset_y)
+        self.animation_manager.draw_floating_texts(game_surface, self.camera_offset_x, self.camera_offset_y)
 
-        # Draw health text
-        font = pygame.font.SysFont(None, 24)
-        health_text = font.render(f"Health: {self.player.health}/{self.player.max_health}", True, WHITE)
-        screen.blit(health_text, (15, 12))
+        # Apply zoom if needed
+        if self.zoom_level != 1.0:
+            # Scale the game surface and blit to screen
+            scaled_width = int(screen_width * self.zoom_level)
+            scaled_height = int(screen_height * self.zoom_level)
+            scaled_surface = pygame.transform.scale(game_surface, (scaled_width, scaled_height))
 
-        # Draw score
-        score_text = font.render(f"Score: {score}", True, WHITE)
-        screen.blit(score_text, (screen_width - 150, 12))
+            # Center the scaled surface on screen
+            offset_x = (screen_width - scaled_width) // 2
+            offset_y = (screen_height - scaled_height) // 2
 
-        # Draw current level
-        level_text = font.render(f"Level: {current_level}", True, WHITE)
-        screen.blit(level_text, (screen_width - 150, 40))
+            # Clear screen and blit scaled surface
+            screen.fill((20, 20, 20))
+            screen.blit(scaled_surface, (offset_x, offset_y))
 
-        # Draw player level (positioned below XP bar to avoid overlap)
-        player_level_text = font.render(f"Player Lv: {self.player.level}", True, CYAN)
-        screen.blit(player_level_text, (10, 65))
+        # Update and draw modern HUD (always on top, not affected by zoom)
+        if self.modern_hud:
+            self.modern_hud.update()
+            self.modern_hud.draw(screen, self.player, score, current_level)
 
-        # Note: XP bar is now handled by XPProgressBar in game.py to avoid duplication
-
-        # Draw upgrade points if available
-        if self.player.upgrade_points > 0:
-            upgrade_text = font.render(f"Upgrade Points: {self.player.upgrade_points}", True, YELLOW)
-            screen.blit(upgrade_text, (screen_width // 2 - 100, 12))
-
-        # Draw special effect indicators (positioned below player level)
-        effect_y = 90
-        if hasattr(self.player, 'shield_health') and self.player.shield_health > 0:
-            shield_text = font.render(f"Shield: {self.player.shield_health}", True, CYAN)
-            screen.blit(shield_text, (10, effect_y))
-            effect_y += 25
-
-        if hasattr(self.player, 'multi_shot_duration') and self.player.multi_shot_duration > 0:
-            multi_text = font.render(f"Multi-Shot: {self.player.multi_shot_duration // 60}s", True, ORANGE)
-            screen.blit(multi_text, (10, effect_y))
-            effect_y += 25
-
-        if hasattr(self.player, 'invincibility_duration') and self.player.invincibility_duration > 0:
-            invincible_text = font.render(f"Invincible: {self.player.invincibility_duration // 60}s", True, YELLOW)
-            screen.blit(invincible_text, (10, effect_y))
-
-        # Draw minimap in the corner (player position is already drawn on the minimap surface)
+        # Draw minimap in the corner (always on top, not affected by zoom)
         if self.minimap_surface:
             minimap_rect = self.minimap_surface.get_rect()
             minimap_rect.bottomright = (screen_width - 10, screen_height - 10)
             screen.blit(self.minimap_surface, minimap_rect)
-
-        # Draw visual effects and animations
-        self.visual_effects.draw(screen, self.camera_offset_x, self.camera_offset_y)
-        self.animation_manager.draw_floating_texts(screen, self.camera_offset_x, self.camera_offset_y)
 
     def handle_player_shoot(self, target_x, target_y):
         """Handle player shooting at the target position"""

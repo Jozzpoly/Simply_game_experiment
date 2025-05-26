@@ -3,8 +3,9 @@ import sys
 import logging
 from typing import Optional, Tuple, TYPE_CHECKING
 from level.level import Level
-from ui.ui_elements import GameOverScreen, StartScreen, UpgradeScreen, XPProgressBar, SkillNotification
+from ui.ui_elements import GameOverScreen, StartScreen, UpgradeScreen, SkillNotification
 from utils.constants import *
+from config import ZOOM_SENSITIVITY
 from utils.save_manager import SaveManager
 from utils.audio_manager import AudioManager
 
@@ -55,8 +56,7 @@ class Game:
         self.game_over_screen: GameOverScreen = GameOverScreen(SCREEN_WIDTH, SCREEN_HEIGHT)
         self.upgrade_screen: UpgradeScreen = UpgradeScreen(SCREEN_WIDTH, SCREEN_HEIGHT)
 
-        # Enhanced UI elements - position XP bar below health bar
-        self.xp_progress_bar: XPProgressBar = XPProgressBar(10, 35, 300, 25)
+        # Enhanced UI elements - only skill notifications (XP bar is handled by ModernHUD)
         self.skill_notifications: SkillNotification = SkillNotification(SCREEN_WIDTH - 300, 50, 280, 100)
 
         # Victory condition
@@ -121,8 +121,7 @@ class Game:
             self.game_over_screen = GameOverScreen(screen_width, screen_height)
             self.upgrade_screen = UpgradeScreen(screen_width, screen_height)
 
-            # Initialize enhanced UI elements - position XP bar below health bar
-            self.xp_progress_bar = XPProgressBar(10, 35, 300, 25)
+            # Initialize enhanced UI elements - only skill notifications (XP bar is handled by ModernHUD)
             self.skill_notifications = SkillNotification(screen_width - 300, 50, 280, 100)
 
             # Update continue button availability if needed
@@ -180,6 +179,10 @@ class Game:
 
                     elif event.type == pygame.KEYUP:
                         self._handle_keyup(event)
+
+                    # Handle mouse wheel for zoom
+                    elif event.type == pygame.MOUSEWHEEL:
+                        self._handle_mouse_wheel(event)
 
                 # Update
                 self.update()
@@ -288,6 +291,18 @@ class Game:
             # Stop continuous shooting
             self.continuous_shooting = False
 
+    def _handle_mouse_wheel(self, event: pygame.event.Event) -> None:
+        """Handle mouse wheel events for zoom functionality"""
+        if self.state == GameState.PLAYING and self.level:
+            # Get mouse position
+            mouse_x, mouse_y = pygame.mouse.get_pos()
+
+            # Calculate zoom delta (positive = zoom in, negative = zoom out)
+            zoom_delta = event.y * ZOOM_SENSITIVITY  # Use configurable sensitivity
+
+            # Apply zoom
+            self.level.handle_zoom(zoom_delta, mouse_x, mouse_y)
+
     def update(self) -> None:
         """Update game state based on current GameState"""
         if self.state == GameState.PLAYING and not self.paused and self.level:
@@ -374,7 +389,6 @@ class Game:
 
                 # Draw enhanced UI elements
                 if self.level.player:
-                    self.xp_progress_bar.draw(self.screen, self.level.player)
                     self.skill_notifications.draw(self.screen)
 
             # Draw pause overlay if paused

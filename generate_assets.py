@@ -1,5 +1,6 @@
 import pygame
 import os
+import math
 
 # Initialize pygame
 pygame.init()
@@ -8,8 +9,16 @@ pygame.init()
 os.makedirs("assets/images", exist_ok=True)
 os.makedirs("assets/images/tiles", exist_ok=True)
 os.makedirs("assets/images/entities", exist_ok=True)
+os.makedirs("assets/images/entities/player", exist_ok=True)
+os.makedirs("assets/images/entities/enemy", exist_ok=True)
+os.makedirs("assets/images/entities/boss", exist_ok=True)
 os.makedirs("assets/images/effects", exist_ok=True)
+os.makedirs("assets/images/effects/particles", exist_ok=True)
+os.makedirs("assets/images/effects/explosions", exist_ok=True)
 os.makedirs("assets/images/ui", exist_ok=True)
+os.makedirs("assets/images/ui/buttons", exist_ok=True)
+os.makedirs("assets/images/ui/panels", exist_ok=True)
+os.makedirs("assets/images/ui/icons", exist_ok=True)
 
 # Enhanced color palette for better visual appeal
 BLACK = (0, 0, 0)
@@ -337,7 +346,328 @@ pygame.image.save(speed_boost, "assets/images/speed_boost.png")
 fire_rate_boost = create_fire_rate_boost_sprite()
 pygame.image.save(fire_rate_boost, "assets/images/fire_rate_boost.png")
 
-print("Enhanced assets generated successfully!")
+# ===== ANIMATION FRAME GENERATION =====
+
+def create_player_animation_frames():
+    """Create animation frames for player character"""
+    base_player = create_enhanced_player_sprite()
+
+    # Idle animation frames (4 frames with subtle breathing effect)
+    for i in range(4):
+        frame = base_player.copy()
+        # Subtle breathing effect - slight vertical movement
+        breathing_offset = int(math.sin(i * math.pi / 2) * 0.5)
+        if breathing_offset != 0:
+            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            temp_surface.blit(frame, (0, breathing_offset))
+            frame = temp_surface
+
+        pygame.image.save(frame, f"assets/images/entities/player/idle_{i}.png")
+
+    # Walking animation frames (8 frames with bob effect)
+    for i in range(8):
+        frame = base_player.copy()
+        # Walking bob effect
+        bob_offset = int(math.sin(i * math.pi / 4) * 1.5)
+        if bob_offset != 0:
+            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            temp_surface.blit(frame, (0, bob_offset))
+            frame = temp_surface
+
+        pygame.image.save(frame, f"assets/images/entities/player/walk_{i}.png")
+
+    # Attack animation frames (6 frames with weapon swing)
+    for i in range(6):
+        frame = base_player.copy()
+        # Simple attack effect - weapon glow
+        if i in [2, 3]:  # Peak of attack
+            # Add weapon glow effect
+            glow_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            glow_surface.blit(frame, (0, 0))
+            # Add white glow around weapon area
+            pygame.draw.rect(glow_surface, (255, 255, 255, 100), (26, 6, 6, 16))
+            frame = glow_surface
+
+        pygame.image.save(frame, f"assets/images/entities/player/attack_{i}.png")
+
+def create_enemy_animation_frames():
+    """Create animation frames for enemy characters"""
+    base_enemy = create_enhanced_enemy_sprite()
+
+    # Idle animation frames (4 frames with menacing sway)
+    for i in range(4):
+        frame = base_enemy.copy()
+        # Menacing sway effect
+        sway_offset = int(math.sin(i * math.pi / 2) * 0.8)
+        if sway_offset != 0:
+            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            temp_surface.blit(frame, (sway_offset, 0))
+            frame = temp_surface
+
+        pygame.image.save(frame, f"assets/images/entities/enemy/idle_{i}.png")
+
+    # Walking animation frames (8 frames)
+    for i in range(8):
+        frame = base_enemy.copy()
+        # Walking animation with aggressive movement
+        bob_offset = int(math.sin(i * math.pi / 4) * 2)
+        if bob_offset != 0:
+            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            temp_surface.blit(frame, (0, bob_offset))
+            frame = temp_surface
+
+        pygame.image.save(frame, f"assets/images/entities/enemy/walk_{i}.png")
+
+    # Attack animation frames (6 frames)
+    for i in range(6):
+        frame = base_enemy.copy()
+        # Attack effect with weapon glow
+        if i in [2, 3]:  # Peak of attack
+            glow_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            glow_surface.blit(frame, (0, 0))
+            # Add red glow around weapon
+            pygame.draw.rect(glow_surface, (255, 0, 0, 120), (24, 8, 8, 12))
+            frame = glow_surface
+
+        pygame.image.save(frame, f"assets/images/entities/enemy/attack_{i}.png")
+
+def create_boss_animation_frames():
+    """Create animation frames for boss enemies"""
+    # Create a larger, more imposing boss sprite
+    boss_surface = pygame.Surface((64, 64), pygame.SRCALPHA)
+
+    # Boss body (larger and more detailed)
+    pygame.draw.rect(boss_surface, DARK_RED, (16, 24, 32, 28))  # Main body
+    pygame.draw.rect(boss_surface, BLACK, (18, 26, 28, 4))  # Dark armor
+    pygame.draw.rect(boss_surface, DARK_GRAY, (20, 30, 24, 2))  # Armor details
+
+    # Boss head (larger and more menacing)
+    pygame.draw.rect(boss_surface, DARK_RED, (20, 8, 24, 20))  # Head
+    pygame.draw.rect(boss_surface, RED, (22, 10, 20, 4))  # Head highlight
+
+    # Glowing eyes
+    pygame.draw.rect(boss_surface, RED, (24, 16, 4, 4))  # Left eye
+    pygame.draw.rect(boss_surface, RED, (36, 16, 4, 4))  # Right eye
+    pygame.draw.rect(boss_surface, WHITE, (25, 17, 2, 2))  # Eye glow
+    pygame.draw.rect(boss_surface, WHITE, (37, 17, 2, 2))  # Eye glow
+
+    # Boss arms (larger)
+    pygame.draw.rect(boss_surface, DARK_RED, (8, 28, 8, 16))  # Left arm
+    pygame.draw.rect(boss_surface, DARK_RED, (48, 28, 8, 16))  # Right arm
+
+    # Boss legs
+    pygame.draw.rect(boss_surface, DARK_RED, (20, 52, 8, 8))  # Left leg
+    pygame.draw.rect(boss_surface, DARK_RED, (36, 52, 8, 8))  # Right leg
+
+    # Boss weapon (massive axe)
+    pygame.draw.rect(boss_surface, DARK_BROWN, (56, 16, 4, 20))  # Handle
+    pygame.draw.rect(boss_surface, DARK_GRAY, (52, 12, 12, 8))  # Axe head
+    pygame.draw.rect(boss_surface, GRAY, (54, 14, 8, 4))  # Axe highlight
+
+    # Idle animation frames (6 frames with intimidating presence)
+    for i in range(6):
+        frame = boss_surface.copy()
+        # Intimidating breathing effect
+        breathing_offset = int(math.sin(i * math.pi / 3) * 1)
+        if breathing_offset != 0:
+            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            temp_surface.blit(frame, (0, breathing_offset))
+            frame = temp_surface
+
+        # Add pulsing red aura
+        if i % 2 == 0:
+            aura_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            aura_surface.blit(frame, (0, 0))
+            pygame.draw.rect(aura_surface, (255, 0, 0, 30), (0, 0, 64, 64))
+            frame = aura_surface
+
+        pygame.image.save(frame, f"assets/images/entities/boss/idle_{i}.png")
+
+    # Attack animation frames (8 frames with devastating swing)
+    for i in range(8):
+        frame = boss_surface.copy()
+        # Massive attack animation
+        if i in [3, 4, 5]:  # Peak of attack
+            glow_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            glow_surface.blit(frame, (0, 0))
+            # Massive weapon glow
+            pygame.draw.rect(glow_surface, (255, 100, 100, 150), (48, 8, 16, 24))
+            frame = glow_surface
+
+        pygame.image.save(frame, f"assets/images/entities/boss/attack_{i}.png")
+
+# ===== UI ELEMENT GENERATION =====
+
+def create_modern_button_styles():
+    """Create modern button styles with gradients and effects"""
+    button_sizes = [(200, 50), (150, 40), (120, 30)]
+    button_states = ["normal", "hover", "pressed", "disabled"]
+
+    for size in button_sizes:
+        width, height = size
+        for state in button_states:
+            button_surface = pygame.Surface((width, height), pygame.SRCALPHA)
+
+            if state == "normal":
+                # Modern gradient button
+                for y in range(height):
+                    alpha = 1.0 - (y / height) * 0.3
+                    color = (int(70 * alpha), int(130 * alpha), int(180 * alpha))
+                    pygame.draw.line(button_surface, color, (2, y), (width-3, y))
+
+                # Border
+                pygame.draw.rect(button_surface, (50, 100, 150), (0, 0, width, height), 2)
+
+            elif state == "hover":
+                # Brighter hover state
+                for y in range(height):
+                    alpha = 1.0 - (y / height) * 0.2
+                    color = (int(90 * alpha), int(150 * alpha), int(200 * alpha))
+                    pygame.draw.line(button_surface, color, (2, y), (width-3, y))
+
+                # Glowing border
+                pygame.draw.rect(button_surface, (100, 150, 255), (0, 0, width, height), 2)
+
+            elif state == "pressed":
+                # Pressed/active state
+                for y in range(height):
+                    alpha = 1.0 - (y / height) * 0.4
+                    color = (int(50 * alpha), int(100 * alpha), int(140 * alpha))
+                    pygame.draw.line(button_surface, color, (2, y), (width-3, y))
+
+                pygame.draw.rect(button_surface, (30, 80, 120), (0, 0, width, height), 2)
+
+            elif state == "disabled":
+                # Grayed out disabled state
+                for y in range(height):
+                    alpha = 1.0 - (y / height) * 0.3
+                    color = (int(80 * alpha), int(80 * alpha), int(80 * alpha))
+                    pygame.draw.line(button_surface, color, (2, y), (width-3, y))
+
+                pygame.draw.rect(button_surface, (60, 60, 60), (0, 0, width, height), 2)
+
+            # Add subtle inner highlight
+            pygame.draw.line(button_surface, (255, 255, 255, 50), (2, 2), (width-3, 2))
+
+            filename = f"assets/images/ui/buttons/button_{width}x{height}_{state}.png"
+            pygame.image.save(button_surface, filename)
+
+def create_ui_panels():
+    """Create modern UI panel backgrounds"""
+    panel_sizes = [(400, 300), (600, 400), (800, 600)]
+
+    for width, height in panel_sizes:
+        panel_surface = pygame.Surface((width, height), pygame.SRCALPHA)
+
+        # Semi-transparent dark background
+        panel_surface.fill((20, 20, 30, 200))
+
+        # Modern border with gradient
+        border_color = (100, 150, 200)
+        pygame.draw.rect(panel_surface, border_color, (0, 0, width, height), 3)
+
+        # Inner border highlight
+        pygame.draw.rect(panel_surface, (150, 200, 255, 100), (2, 2, width-4, height-4), 1)
+
+        # Corner accents
+        corner_size = 20
+        pygame.draw.rect(panel_surface, (150, 200, 255), (0, 0, corner_size, corner_size))
+        pygame.draw.rect(panel_surface, (150, 200, 255), (width-corner_size, 0, corner_size, corner_size))
+        pygame.draw.rect(panel_surface, (150, 200, 255), (0, height-corner_size, corner_size, corner_size))
+        pygame.draw.rect(panel_surface, (150, 200, 255), (width-corner_size, height-corner_size, corner_size, corner_size))
+
+        filename = f"assets/images/ui/panels/panel_{width}x{height}.png"
+        pygame.image.save(panel_surface, filename)
+
+def create_ui_icons():
+    """Create modern UI icons"""
+    icon_size = 32
+
+    # Health icon
+    health_icon = pygame.Surface((icon_size, icon_size), pygame.SRCALPHA)
+    pygame.draw.circle(health_icon, RED, (icon_size//2, icon_size//2), icon_size//2 - 2)
+    pygame.draw.rect(health_icon, WHITE, (icon_size//2 - 8, icon_size//2 - 2, 16, 4))
+    pygame.draw.rect(health_icon, WHITE, (icon_size//2 - 2, icon_size//2 - 8, 4, 16))
+    pygame.image.save(health_icon, "assets/images/ui/icons/health.png")
+
+    # Mana/Energy icon
+    mana_icon = pygame.Surface((icon_size, icon_size), pygame.SRCALPHA)
+    pygame.draw.circle(mana_icon, BLUE, (icon_size//2, icon_size//2), icon_size//2 - 2)
+    # Lightning bolt shape
+    points = [(icon_size//2 - 4, 6), (icon_size//2 + 2, icon_size//2 - 2),
+              (icon_size//2 - 2, icon_size//2 - 2), (icon_size//2 + 4, icon_size - 6)]
+    pygame.draw.polygon(mana_icon, WHITE, points)
+    pygame.image.save(mana_icon, "assets/images/ui/icons/mana.png")
+
+    # XP icon
+    xp_icon = pygame.Surface((icon_size, icon_size), pygame.SRCALPHA)
+    pygame.draw.circle(xp_icon, GOLD, (icon_size//2, icon_size//2), icon_size//2 - 2)
+    # Star shape
+    star_points = []
+    for i in range(10):
+        angle = i * math.pi / 5
+        if i % 2 == 0:
+            radius = icon_size//2 - 6
+        else:
+            radius = icon_size//2 - 12
+        x = icon_size//2 + int(radius * math.cos(angle - math.pi/2))
+        y = icon_size//2 + int(radius * math.sin(angle - math.pi/2))
+        star_points.append((x, y))
+    pygame.draw.polygon(xp_icon, WHITE, star_points)
+    pygame.image.save(xp_icon, "assets/images/ui/icons/xp.png")
+
+def create_particle_effects():
+    """Create particle effect sprites"""
+    particle_sizes = [4, 8, 12, 16]
+    particle_colors = [
+        ("fire", ORANGE, RED),
+        ("magic", CYAN, BLUE),
+        ("heal", GREEN, LIME),
+        ("dark", PURPLE, BLACK)
+    ]
+
+    for size in particle_sizes:
+        for name, color1, color2 in particle_colors:
+            particle = pygame.Surface((size, size), pygame.SRCALPHA)
+
+            # Create gradient particle
+            center = size // 2
+            for radius in range(center, 0, -1):
+                alpha = int(255 * (radius / center))
+                if radius == center:
+                    current_color = (*color2, alpha)
+                else:
+                    # Blend between colors
+                    blend = radius / center
+                    blended_color = (
+                        int(color1[0] * blend + color2[0] * (1 - blend)),
+                        int(color1[1] * blend + color2[1] * (1 - blend)),
+                        int(color1[2] * blend + color2[2] * (1 - blend)),
+                        alpha
+                    )
+                    current_color = blended_color
+
+                # Draw circle with alpha
+                temp_surface = pygame.Surface((size, size), pygame.SRCALPHA)
+                pygame.draw.circle(temp_surface, current_color[:3], (center, center), radius)
+                temp_surface.set_alpha(current_color[3])
+                particle.blit(temp_surface, (0, 0))
+
+            filename = f"assets/images/effects/particles/{name}_{size}.png"
+            pygame.image.save(particle, filename)
+
+# Generate all UI elements
+create_modern_button_styles()
+create_ui_panels()
+create_ui_icons()
+create_particle_effects()
+
+# Generate all animation frames
+create_player_animation_frames()
+create_enemy_animation_frames()
+create_boss_animation_frames()
+
+print("Enhanced assets, UI elements, and animation frames generated successfully!")
 
 # Quit pygame
 pygame.quit()

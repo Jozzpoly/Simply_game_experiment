@@ -1,9 +1,14 @@
 import pygame
+import os
 from utils.constants import *
 from progression.achievements import Achievement
+from ui.enhanced_ui_elements import ModernButton, ModernPanel, ProgressBar
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Button:
-    """A clickable button for UI"""
+    """Enhanced clickable button with modern styling"""
 
     def __init__(self, x, y, width, height, text, color=BLUE, hover_color=PURPLE, text_color=WHITE):
         self.rect = pygame.Rect(x, y, width, height)
@@ -12,37 +17,129 @@ class Button:
         self.hover_color = hover_color
         self.text_color = text_color
         self.is_hovered = False
+        self.is_pressed = False
         self.enabled = True
+        self.animation_progress = 0.0
 
         # Font
         self.font = pygame.font.SysFont(None, 32)
 
+        # Load button graphics if available
+        self.button_graphics = self._load_button_graphics()
+
+    def _load_button_graphics(self):
+        """Load button graphics from files if available"""
+        graphics = {}
+        button_path = f"assets/images/ui/buttons/button_{self.rect.width}x{self.rect.height}"
+
+        for state in ["normal", "hover", "pressed", "disabled"]:
+            file_path = f"{button_path}_{state}.png"
+            if os.path.exists(file_path):
+                try:
+                    graphics[state] = pygame.image.load(file_path).convert_alpha()
+                except pygame.error as e:
+                    logger.warning(f"Failed to load button graphic {file_path}: {e}")
+                    graphics[state] = None
+            else:
+                graphics[state] = None
+
+        return graphics
+
     def draw(self, surface):
-        """Draw the button on the given surface"""
-        # Draw button background
-        if self.enabled:
-            color = self.hover_color if self.is_hovered else self.color
-        else:
-            # Disabled button appears grayed out
+        """Draw the button with enhanced modern styling"""
+        # Determine current state
+        if not self.enabled:
+            state = "disabled"
             color = GRAY
+        elif self.is_pressed:
+            state = "pressed"
+            color = (max(0, self.color[0] - 30), max(0, self.color[1] - 30), max(0, self.color[2] - 30))
+        elif self.is_hovered:
+            state = "hover"
+            color = self.hover_color
+        else:
+            state = "normal"
+            color = self.color
 
-        pygame.draw.rect(surface, color, self.rect)
-        pygame.draw.rect(surface, BLACK, self.rect, 2)  # Border
+        # Use graphics if available, otherwise draw programmatically
+        if self.button_graphics.get(state):
+            surface.blit(self.button_graphics[state], self.rect.topleft)
+        else:
+            self._draw_enhanced_button(surface, color)
 
-        # Draw text
-        text_color = self.text_color if self.enabled else (200, 200, 200)  # Lighter text for disabled
+        # Draw text with enhanced styling
+        self._draw_enhanced_text(surface)
+
+    def _draw_enhanced_button(self, surface, color):
+        """Draw button with gradient and modern effects"""
+        # Draw gradient background
+        for y in range(self.rect.height):
+            alpha = 1.0 - (y / self.rect.height) * 0.3
+            line_color = (int(color[0] * alpha), int(color[1] * alpha), int(color[2] * alpha))
+            pygame.draw.line(surface, line_color,
+                           (self.rect.x + 2, self.rect.y + y),
+                           (self.rect.x + self.rect.width - 3, self.rect.y + y))
+
+        # Enhanced border with glow effect when hovered
+        border_color = BLACK
+        if self.is_hovered and self.enabled:
+            glow_intensity = int(50 * self.animation_progress)
+            border_color = (
+                min(255, glow_intensity),
+                min(255, glow_intensity + 50),
+                min(255, glow_intensity + 100)
+            )
+
+        pygame.draw.rect(surface, border_color, self.rect, 2)
+
+        # Inner highlight for depth
+        if not self.is_pressed and self.enabled:
+            pygame.draw.line(surface, (255, 255, 255, 80),
+                           (self.rect.x + 2, self.rect.y + 2),
+                           (self.rect.x + self.rect.width - 3, self.rect.y + 2))
+
+    def _draw_enhanced_text(self, surface):
+        """Draw text with enhanced styling"""
+        text_color = self.text_color if self.enabled else (150, 150, 150)
+
+        # Add subtle shadow effect
+        if self.enabled:
+            shadow_surface = self.font.render(self.text, True, (0, 0, 0, 100))
+            shadow_rect = shadow_surface.get_rect(center=(self.rect.centerx + 1, self.rect.centery + 1))
+            if self.is_pressed:
+                shadow_rect.y += 1
+            surface.blit(shadow_surface, shadow_rect)
+
+        # Main text
         text_surface = self.font.render(self.text, True, text_color)
         text_rect = text_surface.get_rect(center=self.rect.center)
+
+        # Slight offset when pressed
+        if self.is_pressed:
+            text_rect.y += 1
+
         surface.blit(text_surface, text_rect)
 
-    def update(self, mouse_pos):
-        """Update button state based on mouse position"""
+    def update(self, mouse_pos, dt=1.0):
+        """Update button state and animations"""
+        was_hovered = self.is_hovered
         self.is_hovered = self.enabled and self.rect.collidepoint(mouse_pos)
+
+        # Smooth animation for hover effect
+        target_progress = 1.0 if self.is_hovered else 0.0
+        animation_speed = 8.0 * dt
+
+        if self.animation_progress < target_progress:
+            self.animation_progress = min(target_progress, self.animation_progress + animation_speed)
+        elif self.animation_progress > target_progress:
+            self.animation_progress = max(target_progress, self.animation_progress - animation_speed)
 
     def is_clicked(self, event):
         """Check if button was clicked"""
         if self.enabled and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            return self.rect.collidepoint(event.pos)
+            if self.rect.collidepoint(event.pos):
+                self.is_pressed = True
+                return True
         return False
 
     def set_enabled(self, enabled):
@@ -50,6 +147,7 @@ class Button:
         self.enabled = enabled
         if not enabled:
             self.is_hovered = False
+            self.is_pressed = False
 
 class GameOverScreen:
     """Game over screen with restart button and next level button"""

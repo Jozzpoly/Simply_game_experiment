@@ -5,6 +5,7 @@ from pygame.sprite import Group
 from entities.entity import Entity
 from entities.projectile import Projectile
 from utils.constants import *
+from utils.animation_system import EnhancedSpriteAnimator
 from progression.skill_tree import SkillTree
 from progression.equipment import EquipmentManager
 from progression.achievements import AchievementManager
@@ -78,6 +79,12 @@ class Player(Entity):
         self.original_image: pygame.Surface = self.image.copy()
         self.flash_image: pygame.Surface = self._create_flash_image(self.original_image, RED)
 
+        # Enhanced animation system
+        self.animator = EnhancedSpriteAnimator(self.original_image, "player")
+        self.is_moving = False
+        self.is_attacking = False
+        self.attack_timer = 0
+
         # Reference to the Level object (not to be confused with self.level which is the player's experience level)
         # This is used for adding visual effects and interacting with the current game level/map
         self.current_level_ref: Optional['Level'] = None
@@ -123,7 +130,8 @@ class Player(Entity):
             self.velocity.y = self.speed
 
         # Normalize diagonal movement
-        if self.velocity.length() > 0:
+        self.is_moving = self.velocity.length() > 0
+        if self.is_moving:
             self.velocity.normalize_ip()
             self.velocity *= self.get_effective_speed()
 
@@ -133,12 +141,26 @@ class Player(Entity):
         # Update collision rectangle position to match the sprite
         self.collision_rect.center = self.rect.center
 
+        # Update attack timer
+        if self.is_attacking:
+            self.attack_timer += 1
+            if self.attack_timer >= 18:  # Attack animation duration (6 frames * 3 duration each)
+                self.is_attacking = False
+                self.attack_timer = 0
+
+        # Update animation system
+        self.animator.update(self.is_moving, self.is_attacking)
+
+        # Update sprite image from animation (unless flashing)
+        if not self.flash_red:
+            self.image = self.animator.get_current_surface()
+
         # Handle visual effects
         if self.flash_red:
             self.flash_timer -= 1
             if self.flash_timer <= 0:
                 self.flash_red = False
-                self.image = self.original_image.copy()
+                self.image = self.animator.get_current_surface()
             else:
                 self.image = self.flash_image
 
@@ -151,6 +173,9 @@ class Player(Entity):
     def shoot(self, target_x: int, target_y: int, projectiles_group: Group) -> bool:
         """Shoot a projectile towards the target position"""
         if self.can_shoot():
+            # Trigger attack animation
+            self.is_attacking = True
+
             # Calculate direction vector
             start_x = self.rect.centerx
             start_y = self.rect.centery
