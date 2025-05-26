@@ -12,6 +12,8 @@ from utils.visual_effects import VisualEffectsManager
 from utils.animation_system import AnimationManager
 from ui.enhanced_hud import ModernHUD
 from entities.stairs import Stairs
+from entities.environmental_entities import EnvironmentalHazardSprite, SpecialFeatureSprite
+from systems.environmental_system import EnvironmentalManager
 from config import (
     STAIRS_ENABLED,
     REQUIRE_ENEMY_PERCENTAGE_FOR_STAIRS
@@ -55,6 +57,10 @@ class Level:
         self.projectiles: pygame.sprite.Group = pygame.sprite.Group()
         self.items: pygame.sprite.Group = pygame.sprite.Group()
         self.stairs: pygame.sprite.Group = pygame.sprite.Group()  # New: Stairs group
+
+        # Environmental sprite groups
+        self.environmental_hazards: pygame.sprite.Group = pygame.sprite.Group()
+        self.special_features: pygame.sprite.Group = pygame.sprite.Group()
 
         # Level generator
         self.generator: Optional[LevelGenerator] = None
@@ -124,8 +130,21 @@ class Level:
             # Clear messages
             self.xp_messages = []
 
-            # Generate new level
-            tiles, player_pos, enemy_positions, item_positions, stairs_positions = self.generator.generate()
+            # Generate new level with enhanced features
+            generation_result = self.generator.generate()
+
+            # Handle both old and new return formats for compatibility
+            if len(generation_result) == 5:
+                # Old format
+                tiles, player_pos, enemy_positions, item_positions, stairs_positions = generation_result
+                hazard_positions = []
+                special_feature_positions = []
+                exit_positions = []
+                biome_type = 'dungeon'
+            else:
+                # New enhanced format
+                (tiles, player_pos, enemy_positions, item_positions, stairs_positions,
+                 hazard_positions, special_feature_positions, exit_positions, biome_type) = generation_result
 
             # Reset stairs tracking
             self.total_enemies_spawned = len(enemy_positions)
@@ -173,7 +192,7 @@ class Level:
 
         self.all_sprites.add(self.player)
 
-        # Create enemies with level-based scaling
+        # Create enemies with level-based scaling and Phase 2 integration
         for pos in enemy_positions:
             # Check if this is a boss enemy
             if isinstance(pos, tuple) and len(pos) == 2 and pos[0] == "boss":
@@ -182,11 +201,29 @@ class Level:
                 enemy_x = boss_pos[0] * TILE_SIZE
                 enemy_y = boss_pos[1] * TILE_SIZE
                 enemy = BossEnemy(enemy_x, enemy_y, difficulty_level=current_level)
+            elif isinstance(pos, tuple) and len(pos) == 3:
+                # Phase 2: Enhanced enemy with specific type (enemy_type, x, y)
+                enemy_type, enemy_x, enemy_y = pos
+
+                # Import enhanced enemy for Phase 2 types
+                if current_level >= 3 and enemy_type in ['mage', 'assassin', 'necromancer', 'golem',
+                                                        'archer', 'shaman', 'berserker_elite', 'shadow']:
+                    from entities.enhanced_enemy import EnhancedEnemy
+                    enemy = EnhancedEnemy(enemy_x, enemy_y, difficulty_level=current_level, enemy_type=enemy_type)
+                else:
+                    # Fallback to regular enemy for unknown types or early levels
+                    enemy = Enemy(enemy_x, enemy_y, difficulty_level=current_level)
             else:
                 # Create regular enemy - pos should already be in pixels
                 enemy_x = pos[0]
                 enemy_y = pos[1]
-                enemy = Enemy(enemy_x, enemy_y, difficulty_level=current_level)
+
+                # Phase 2: Use enhanced enemies for levels 3+ with random type selection
+                if current_level >= 3:
+                    from entities.enhanced_enemy import EnhancedEnemy
+                    enemy = EnhancedEnemy(enemy_x, enemy_y, difficulty_level=current_level)
+                else:
+                    enemy = Enemy(enemy_x, enemy_y, difficulty_level=current_level)
 
             # Set audio manager reference for the enemy
             if hasattr(self, 'audio_manager') and self.audio_manager:
@@ -216,6 +253,25 @@ class Level:
                 stairs = Stairs(stair_pos[0], stair_pos[1], stair_type)
                 self.stairs.add(stairs)
                 self.all_sprites.add(stairs)
+
+        # Create environmental hazards
+        for hazard_type, x, y in hazard_positions:
+            hazard = EnvironmentalHazardSprite(hazard_type, x, y)
+            self.environmental_hazards.add(hazard)
+            self.all_sprites.add(hazard)
+            logger.info(f"Added {hazard_type} hazard at ({x}, {y})")
+
+        # Create special features
+        for feature_type, x, y in special_feature_positions:
+            feature = SpecialFeatureSprite(feature_type, x, y)
+            self.special_features.add(feature)
+            self.all_sprites.add(feature)
+            logger.info(f"Added {feature_type} feature at ({x}, {y})")
+
+        # Store biome information for rendering and effects
+        self.current_biome = biome_type
+        logger.info(f"Level {self.current_level} generated with biome: {biome_type}")
+        logger.info(f"Environmental elements: {len(hazard_positions)} hazards, {len(special_feature_positions)} features")
 
         # Generate minimap
         self.generate_minimap(tiles)
@@ -299,11 +355,22 @@ class Level:
         for stairs in self.stairs:
             stairs.update(len(self.enemies), self.total_enemies_spawned)
 
+        # Update environmental hazards
+        for hazard in self.environmental_hazards:
+            hazard.update()
+
+        # Update special features
+        for feature in self.special_features:
+            feature.update()
+
         # Check for item collection
         self.check_item_collection(game)
 
         # Check for stairs interaction
         self.check_stairs_interaction(game)
+
+        # Check for environmental interactions
+        self.check_environmental_interactions()
 
         # Update XP messages
         self.update_messages()
@@ -570,6 +637,25 @@ class Level:
                 -enemy.rect.height <= enemy_y <= screen_height):
                 enemy.draw_health_bar(game_surface, self.camera_offset_x, self.camera_offset_y)
 
+        # Draw environmental effects (warnings, glows, etc.)
+        for hazard in self.environmental_hazards:
+            hazard_x = hazard.rect.x - self.camera_offset_x
+            hazard_y = hazard.rect.y - self.camera_offset_y
+
+            if (-hazard.rect.width <= hazard_x <= screen_width and
+                -hazard.rect.height <= hazard_y <= screen_height):
+                if hasattr(hazard, 'draw_warning'):
+                    hazard.draw_warning(game_surface, self.camera_offset_x, self.camera_offset_y)
+
+        for feature in self.special_features:
+            feature_x = feature.rect.x - self.camera_offset_x
+            feature_y = feature.rect.y - self.camera_offset_y
+
+            if (-feature.rect.width <= feature_x <= screen_width and
+                -feature.rect.height <= feature_y <= screen_height):
+                if hasattr(feature, 'draw_glow'):
+                    feature.draw_glow(game_surface, self.camera_offset_x, self.camera_offset_y)
+
         # Draw XP messages (with culling and memory management)
         if self.xp_messages:  # Only create font if we have messages
             font = pygame.font.SysFont(None, 20)
@@ -698,6 +784,72 @@ class Level:
                 self.add_floating_text(unlock_message, stairs.rect.centerx, stairs.rect.centery - 50, YELLOW, duration=120)
 
         return False
+
+    def check_environmental_interactions(self):
+        """Check for player interactions with environmental hazards and special features"""
+        # Use the player's collision rect if available for more accurate collision detection
+        if hasattr(self.player, 'collision_rect'):
+            # Create a temporary sprite for collision detection
+            temp_sprite = pygame.sprite.Sprite()
+            temp_sprite.rect = self.player.collision_rect
+
+            # Check for hazard collisions
+            colliding_hazards = pygame.sprite.spritecollide(temp_sprite, self.environmental_hazards, False)
+            # Check for feature collisions
+            colliding_features = pygame.sprite.spritecollide(temp_sprite, self.special_features, False)
+        else:
+            # Fallback to regular sprite collision if no collision_rect is available
+            colliding_hazards = pygame.sprite.spritecollide(self.player, self.environmental_hazards, False)
+            colliding_features = pygame.sprite.spritecollide(self.player, self.special_features, False)
+
+        # Handle hazard interactions
+        for hazard in colliding_hazards:
+            if hazard.trigger(self.player):
+                # Add visual feedback for hazard activation
+                self.add_floating_text(f"{hazard.hazard_type.replace('_', ' ').title()}!",
+                                     hazard.rect.centerx, hazard.rect.centery - 20,
+                                     RED, duration=90)
+
+                # Play hazard sound if available
+                if self.audio_manager:
+                    self.audio_manager.play_sound('hazard_trigger')
+
+        # Handle feature interactions
+        for feature in colliding_features:
+            if feature.interact(self.player):
+                # Add visual feedback for feature interaction
+                feature_name = feature.feature_type.replace('_', ' ').title()
+
+                if feature.feature_type == 'treasure_alcove':
+                    # Give player treasure/items
+                    self.add_floating_text(f"Found {feature_name}!",
+                                         feature.rect.centerx, feature.rect.centery - 20,
+                                         YELLOW, duration=120)
+                    # Could add actual treasure here
+
+                elif feature.feature_type == 'hidden_grove':
+                    self.add_floating_text("Healing Grove",
+                                         feature.rect.centerx, feature.rect.centery - 20,
+                                         GREEN, duration=120)
+
+                elif feature.feature_type == 'crystal_formation':
+                    self.add_floating_text("Mana Crystal!",
+                                         feature.rect.centerx, feature.rect.centery - 20,
+                                         BLUE, duration=120)
+
+                elif feature.feature_type == 'power_crystal':
+                    self.add_floating_text("Power Boost!",
+                                         feature.rect.centerx, feature.rect.centery - 20,
+                                         RED, duration=120)
+
+                else:
+                    self.add_floating_text(f"Activated {feature_name}!",
+                                         feature.rect.centerx, feature.rect.centery - 20,
+                                         WHITE, duration=120)
+
+                # Play feature sound if available
+                if self.audio_manager:
+                    self.audio_manager.play_sound('feature_activate')
 
     def generate_minimap(self, tiles):
         """Generate a minimap from the level tiles"""

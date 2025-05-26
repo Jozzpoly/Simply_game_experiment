@@ -125,13 +125,27 @@ class BiomeGenerator:
                         scale=1.0
                     )
 
-                # Determine tile type based on noise and biome
-                if terrain_noise > 0.3:
+                # Enhanced terrain generation with more variety
+                if terrain_noise > 0.4:
                     tiles[local_y][local_x] = TERRAIN_TYPES['wall']
-                elif terrain_noise > 0.1:
-                    tiles[local_y][local_x] = TERRAIN_TYPES[biome_config['secondary']]
+                elif terrain_noise > 0.2:
+                    # Use secondary terrain type
+                    secondary_type = biome_config['secondary']
+                    tiles[local_y][local_x] = TERRAIN_TYPES.get(secondary_type, TERRAIN_TYPES['stone'])
+                elif terrain_noise > 0.0:
+                    # Use primary terrain type
+                    primary_type = biome_config['primary']
+                    tiles[local_y][local_x] = TERRAIN_TYPES.get(primary_type, TERRAIN_TYPES['floor'])
                 else:
-                    tiles[local_y][local_x] = TERRAIN_TYPES[biome_config['primary']]
+                    # Add terrain variety with additional noise layer
+                    variety_noise = self._get_variety_noise(world_x, world_y)
+                    if variety_noise > 0.6:
+                        # Special terrain based on biome
+                        decoration_type = biome_config['decoration']
+                        tiles[local_y][local_x] = TERRAIN_TYPES.get(decoration_type, TERRAIN_TYPES['floor'])
+                    else:
+                        # Standard floor
+                        tiles[local_y][local_x] = TERRAIN_TYPES['floor']
 
                 # Add decorations
                 if (random.random() < TERRAIN_DECORATION_DENSITY and
@@ -151,6 +165,20 @@ class BiomeGenerator:
         chunk.last_access_time = pygame.time.get_ticks()
 
         return chunk
+
+    def _get_variety_noise(self, world_x: int, world_y: int) -> float:
+        """Get variety noise for terrain decoration"""
+        if NOISE_AVAILABLE:
+            return noise.pnoise2(
+                world_x * 0.05,
+                world_y * 0.05,
+                octaves=2,
+                persistence=0.3,
+                lacunarity=2.0,
+                base=self.seed + 2000
+            )
+        else:
+            return simple_noise(world_x * 0.05, world_y * 0.05, scale=0.5)
 
     def _smooth_terrain(self, tiles: List[List[int]]) -> List[List[int]]:
         """Apply cellular automata smoothing to terrain"""
@@ -270,6 +298,9 @@ class TerrainManager:
         gravel_surface.fill((169, 169, 169))  # Dark gray
         self.tile_textures[TERRAIN_TYPES['gravel']] = gravel_surface
 
+        # Enhanced terrain textures for new types
+        self._load_enhanced_terrain_textures(tile_size)
+
         # Decoration textures (smaller)
         decoration_size = tile_size // 2
 
@@ -287,6 +318,111 @@ class TerrainManager:
         grass_decoration = pygame.Surface((decoration_size, decoration_size))
         grass_decoration.fill((0, 100, 0))
         self.decoration_textures['grass'] = grass_decoration
+
+    def _load_enhanced_terrain_textures(self, tile_size: int) -> None:
+        """Load textures for enhanced terrain types"""
+        # Grass variants
+        if 'grass_tall' in TERRAIN_TYPES:
+            grass_tall_surface = pygame.Surface((tile_size, tile_size))
+            grass_tall_surface.fill((0, 128, 0))  # Darker green
+            self.tile_textures[TERRAIN_TYPES['grass_tall']] = grass_tall_surface
+
+        if 'grass_dry' in TERRAIN_TYPES:
+            grass_dry_surface = pygame.Surface((tile_size, tile_size))
+            grass_dry_surface.fill((154, 205, 50))  # Yellow green
+            self.tile_textures[TERRAIN_TYPES['grass_dry']] = grass_dry_surface
+
+        # Dirt variants
+        if 'dirt_rich' in TERRAIN_TYPES:
+            dirt_rich_surface = pygame.Surface((tile_size, tile_size))
+            dirt_rich_surface.fill((139, 69, 19))  # Saddle brown
+            self.tile_textures[TERRAIN_TYPES['dirt_rich']] = dirt_rich_surface
+
+        if 'dirt_rocky' in TERRAIN_TYPES:
+            dirt_rocky_surface = pygame.Surface((tile_size, tile_size))
+            dirt_rocky_surface.fill((160, 82, 45))  # Lighter brown
+            self.tile_textures[TERRAIN_TYPES['dirt_rocky']] = dirt_rocky_surface
+
+        # Stone variants
+        if 'stone_rough' in TERRAIN_TYPES:
+            stone_rough_surface = pygame.Surface((tile_size, tile_size))
+            stone_rough_surface.fill((105, 105, 105))  # Dim gray
+            self.tile_textures[TERRAIN_TYPES['stone_rough']] = stone_rough_surface
+
+        if 'stone_smooth' in TERRAIN_TYPES:
+            stone_smooth_surface = pygame.Surface((tile_size, tile_size))
+            stone_smooth_surface.fill((119, 136, 153))  # Light slate gray
+            self.tile_textures[TERRAIN_TYPES['stone_smooth']] = stone_smooth_surface
+
+        # Sand variants
+        if 'sand_coarse' in TERRAIN_TYPES:
+            sand_coarse_surface = pygame.Surface((tile_size, tile_size))
+            sand_coarse_surface.fill((210, 180, 140))  # Tan
+            self.tile_textures[TERRAIN_TYPES['sand_coarse']] = sand_coarse_surface
+
+        # Water variants
+        if 'water_shallow' in TERRAIN_TYPES:
+            water_shallow_surface = pygame.Surface((tile_size, tile_size))
+            water_shallow_surface.fill((135, 206, 235))  # Sky blue
+            self.tile_textures[TERRAIN_TYPES['water_shallow']] = water_shallow_surface
+
+        if 'water_deep' in TERRAIN_TYPES:
+            water_deep_surface = pygame.Surface((tile_size, tile_size))
+            water_deep_surface.fill((0, 0, 139))  # Dark blue
+            self.tile_textures[TERRAIN_TYPES['water_deep']] = water_deep_surface
+
+        if 'ice' in TERRAIN_TYPES:
+            ice_surface = pygame.Surface((tile_size, tile_size))
+            ice_surface.fill((240, 248, 255))  # Alice blue
+            self.tile_textures[TERRAIN_TYPES['ice']] = ice_surface
+
+        # Wood variants
+        if 'wood_old' in TERRAIN_TYPES:
+            wood_old_surface = pygame.Surface((tile_size, tile_size))
+            wood_old_surface.fill((85, 51, 17))  # Dark brown
+            self.tile_textures[TERRAIN_TYPES['wood_old']] = wood_old_surface
+
+        if 'wood_rotten' in TERRAIN_TYPES:
+            wood_rotten_surface = pygame.Surface((tile_size, tile_size))
+            wood_rotten_surface.fill((64, 64, 64))  # Dark gray
+            self.tile_textures[TERRAIN_TYPES['wood_rotten']] = wood_rotten_surface
+
+        # Organic terrain
+        if 'moss' in TERRAIN_TYPES:
+            moss_surface = pygame.Surface((tile_size, tile_size))
+            moss_surface.fill((0, 100, 0))  # Dark green
+            self.tile_textures[TERRAIN_TYPES['moss']] = moss_surface
+
+        if 'mushroom' in TERRAIN_TYPES:
+            mushroom_surface = pygame.Surface((tile_size, tile_size))
+            mushroom_surface.fill((139, 69, 19))  # Brown with spots
+            self.tile_textures[TERRAIN_TYPES['mushroom']] = mushroom_surface
+
+        # Special terrain
+        if 'lava' in TERRAIN_TYPES:
+            lava_surface = pygame.Surface((tile_size, tile_size))
+            lava_surface.fill((255, 69, 0))  # Red orange
+            self.tile_textures[TERRAIN_TYPES['lava']] = lava_surface
+
+        if 'crystal' in TERRAIN_TYPES:
+            crystal_surface = pygame.Surface((tile_size, tile_size))
+            crystal_surface.fill((147, 112, 219))  # Medium purple
+            self.tile_textures[TERRAIN_TYPES['crystal']] = crystal_surface
+
+        if 'metal' in TERRAIN_TYPES:
+            metal_surface = pygame.Surface((tile_size, tile_size))
+            metal_surface.fill((192, 192, 192))  # Silver
+            self.tile_textures[TERRAIN_TYPES['metal']] = metal_surface
+
+        if 'bone' in TERRAIN_TYPES:
+            bone_surface = pygame.Surface((tile_size, tile_size))
+            bone_surface.fill((255, 228, 196))  # Bisque
+            self.tile_textures[TERRAIN_TYPES['bone']] = bone_surface
+
+        if 'ash' in TERRAIN_TYPES:
+            ash_surface = pygame.Surface((tile_size, tile_size))
+            ash_surface.fill((128, 128, 128))  # Gray
+            self.tile_textures[TERRAIN_TYPES['ash']] = ash_surface
 
     def update(self, camera_x: float, camera_y: float, screen_width: int, screen_height: int) -> None:
         """Update terrain system based on camera position"""

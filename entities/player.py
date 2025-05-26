@@ -99,6 +99,13 @@ class Player(Entity):
         self.multi_shot_duration: int = 0
         self.invincibility_duration: int = 0
 
+        # Environmental effects
+        self.slow_effect: float = 1.0  # Speed multiplier (1.0 = normal, 0.5 = half speed)
+        self.slow_duration: int = 0
+        self.damage_boost_multiplier: float = 1.0
+        self.damage_boost_duration: int = 0
+        self.status_effects: Dict[str, Dict[str, Any]] = {}  # For poison, etc.
+
     def _create_flash_image(self, original: pygame.Surface, color: Tuple[int, int, int]) -> pygame.Surface:
         """Create a flashed version of the image for damage feedback"""
         flash_img = original.copy()
@@ -292,6 +299,9 @@ class Player(Entity):
         if self.invincibility_duration > 0:
             self.invincibility_duration -= 1
 
+        # Update environmental effects
+        self._update_environmental_effects()
+
     def add_xp(self, amount: int) -> bool:
         """Add experience points and check for level up"""
         self.xp += amount
@@ -467,6 +477,9 @@ class Player(Entity):
         total_damage = base_damage + equipment_bonus
         total_damage *= (1.0 + weapon_mastery_bonus)
 
+        # Apply environmental damage boost
+        total_damage *= self.damage_boost_multiplier
+
         # Cap damage at reasonable maximum (10000)
         return min(10000.0, total_damage)
 
@@ -483,6 +496,9 @@ class Player(Entity):
         # Calculate total speed
         total_speed = base_speed + equipment_bonus
         total_speed *= (1.0 + movement_bonus)
+
+        # Apply environmental slow effects
+        total_speed *= self.slow_effect
 
         return total_speed
 
@@ -669,3 +685,69 @@ class Player(Entity):
             self.stats.update(data["stats"])
         if "regen_timer" in data:
             self.regen_timer = data["regen_timer"]
+
+    def _update_environmental_effects(self) -> None:
+        """Update environmental effects like slow, poison, etc."""
+        # Update slow effect
+        if self.slow_duration > 0:
+            self.slow_duration -= 1
+            if self.slow_duration <= 0:
+                self.slow_effect = 1.0  # Reset to normal speed
+
+        # Update damage boost
+        if self.damage_boost_duration > 0:
+            self.damage_boost_duration -= 1
+            if self.damage_boost_duration <= 0:
+                self.damage_boost_multiplier = 1.0  # Reset to normal damage
+
+        # Update status effects
+        effects_to_remove = []
+        for effect_name, effect_data in self.status_effects.items():
+            effect_data['duration'] -= 1
+
+            # Apply effect
+            if effect_name == 'poison':
+                if effect_data['duration'] % effect_data.get('interval', 60) == 0:  # Every second at 60 FPS
+                    self.take_damage(effect_data['damage'])
+
+            # Remove expired effects
+            if effect_data['duration'] <= 0:
+                effects_to_remove.append(effect_name)
+
+        # Clean up expired effects
+        for effect_name in effects_to_remove:
+            del self.status_effects[effect_name]
+
+    def apply_slow(self, slow_factor: float, duration: int) -> None:
+        """Apply slow effect to player"""
+        self.slow_effect = min(self.slow_effect, slow_factor)  # Take the strongest slow
+        self.slow_duration = max(self.slow_duration, duration)  # Take the longest duration
+
+    def apply_damage_boost(self, boost_multiplier: float, duration: int) -> None:
+        """Apply damage boost effect to player"""
+        self.damage_boost_multiplier = max(self.damage_boost_multiplier, boost_multiplier)
+        self.damage_boost_duration = max(self.damage_boost_duration, duration)
+
+    def apply_status_effect(self, effect_type: str, damage: int, duration: int) -> None:
+        """Apply status effect like poison"""
+        if effect_type == 'poison':
+            self.status_effects['poison'] = {
+                'damage': damage,
+                'duration': duration,
+                'interval': 60  # Damage every second
+            }
+
+    def apply_knockback(self, force: float) -> None:
+        """Apply knockback effect (simple implementation)"""
+        # For now, just add a brief invincibility to prevent spam
+        self.invincibility_duration = max(self.invincibility_duration, 30)  # 0.5 seconds at 60 FPS
+
+    def drain_mana(self, amount: int) -> None:
+        """Drain mana (if player has mana system)"""
+        # Placeholder for future mana system
+        pass
+
+    def boost_mana(self, amount: int) -> None:
+        """Boost mana (if player has mana system)"""
+        # Placeholder for future mana system
+        pass

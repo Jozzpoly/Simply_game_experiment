@@ -1,0 +1,45 @@
+{
+  "currencies": {
+    "soul_essence": {
+      "name": "soul_essence",
+      "amount": 64,
+      "lifetime_earned": 64
+    },
+    "knowledge_crystals": {
+      "name": "knowledge_crystals",
+      "amount": 30,
+      "lifetime_earned": 30
+    },
+    "fate_tokens": {
+      "name": "fate_tokens",
+      "amount": 0,
+      "lifetime_earned": 0
+    }
+  },
+  "masteries": {
+    "weapon_mastery": {
+      "mastery_type": "weapon_mastery",
+      "level": 0,
+      "experience": 30,
+      "unlocked_abilities": []
+    },
+    "magic_mastery": {
+      "mastery_type": "magic_mastery",
+      "level": 0,
+      "experience": 3,
+      "unlocked_abilities": []
+    }
+  },
+  "legacy_items": [],
+  "memory_fragments": [],
+  "unlocked_biomes": [],
+  "unlocked_enemies": [],
+  "unlocked_features": [],
+  "prestige_level": 0,
+  "prestige_experience": 60,
+  "total_runs": 2,
+  "successful_runs": 2,
+  "total_playtime": 0,
+  "deepest_level_reached": 2,
+  "version": "3.0"
+}
