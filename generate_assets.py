@@ -36,6 +36,8 @@ DARK_BLUE = (0, 50, 100)
 LIGHT_BLUE = (100, 150, 255)
 DARK_RED = (150, 0, 0)
 LIGHT_RED = (255, 100, 100)
+DARK_GREEN = (0, 100, 0)
+DARK_YELLOW = (150, 150, 0)
 DARK_GRAY = (64, 64, 64)
 LIGHT_GRAY = (192, 192, 192)
 DARK_BROWN = (101, 67, 33)
@@ -349,44 +351,76 @@ pygame.image.save(fire_rate_boost, "assets/images/fire_rate_boost.png")
 # ===== ANIMATION FRAME GENERATION =====
 
 def create_player_animation_frames():
-    """Create animation frames for player character"""
+    """Create optimized animation frames for player character with pronounced movements"""
     base_player = create_enhanced_player_sprite()
 
-    # Idle animation frames (4 frames with subtle breathing effect)
+    # Idle animation frames (4 frames with pronounced breathing effect)
     for i in range(4):
         frame = base_player.copy()
-        # Subtle breathing effect - slight vertical movement
-        breathing_offset = int(math.sin(i * math.pi / 2) * 0.5)
-        if breathing_offset != 0:
+        # More pronounced breathing effect - noticeable vertical movement
+        breathing_offset = int(math.sin(i * math.pi / 2) * 2)
+
+        # Add slight weapon sway for more life
+        weapon_sway = int(math.cos(i * math.pi / 2) * 1)
+
+        if breathing_offset != 0 or weapon_sway != 0:
             temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
-            temp_surface.blit(frame, (0, breathing_offset))
+            temp_surface.blit(frame, (weapon_sway, breathing_offset))
             frame = temp_surface
 
         pygame.image.save(frame, f"assets/images/entities/player/idle_{i}.png")
 
-    # Walking animation frames (8 frames with bob effect)
-    for i in range(8):
+    # Walking animation frames (4 frames with exaggerated bob effect)
+    for i in range(4):
         frame = base_player.copy()
-        # Walking bob effect
-        bob_offset = int(math.sin(i * math.pi / 4) * 1.5)
-        if bob_offset != 0:
-            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
-            temp_surface.blit(frame, (0, bob_offset))
-            frame = temp_surface
+        # Exaggerated walking bob effect - much more visible
+        bob_offset = int(math.sin(i * math.pi / 2) * 4)
+
+        # Add horizontal sway for walking motion
+        sway_offset = int(math.cos(i * math.pi / 2) * 2)
+
+        # Create pronounced movement
+        temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+        temp_surface.blit(frame, (sway_offset, bob_offset))
+        frame = temp_surface
 
         pygame.image.save(frame, f"assets/images/entities/player/walk_{i}.png")
 
-    # Attack animation frames (6 frames with weapon swing)
-    for i in range(6):
+    # Attack animation frames (4 frames with dramatic weapon swing)
+    for i in range(4):
         frame = base_player.copy()
-        # Simple attack effect - weapon glow
-        if i in [2, 3]:  # Peak of attack
-            # Add weapon glow effect
+
+        # Dramatic attack animation with weapon movement
+        if i == 0:  # Wind-up
+            # Pull weapon back
+            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            temp_surface.blit(frame, (-2, 1))
+            frame = temp_surface
+        elif i == 1:  # Mid-swing
+            # Weapon forward, slight body lean
+            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            temp_surface.blit(frame, (1, -1))
+            frame = temp_surface
+            # Add motion blur effect
             glow_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
             glow_surface.blit(frame, (0, 0))
-            # Add white glow around weapon area
-            pygame.draw.rect(glow_surface, (255, 255, 255, 100), (26, 6, 6, 16))
+            pygame.draw.rect(glow_surface, (255, 255, 255, 80), (26, 6, 6, 16))
             frame = glow_surface
+        elif i == 2:  # Impact
+            # Maximum extension with bright glow
+            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            temp_surface.blit(frame, (3, -2))
+            frame = temp_surface
+            # Bright impact glow
+            glow_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            glow_surface.blit(frame, (0, 0))
+            pygame.draw.rect(glow_surface, (255, 255, 255, 150), (24, 4, 8, 20))
+            frame = glow_surface
+        else:  # Recovery
+            # Return to neutral position
+            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            temp_surface.blit(frame, (0, 0))
+            frame = temp_surface
 
         pygame.image.save(frame, f"assets/images/entities/player/attack_{i}.png")
 
@@ -394,107 +428,465 @@ def create_enemy_animation_frames():
     """Create animation frames for enemy characters"""
     base_enemy = create_enhanced_enemy_sprite()
 
-    # Idle animation frames (4 frames with menacing sway)
+    # Idle animation frames (4 frames with pronounced menacing presence)
     for i in range(4):
         frame = base_enemy.copy()
-        # Menacing sway effect
-        sway_offset = int(math.sin(i * math.pi / 2) * 0.8)
-        if sway_offset != 0:
-            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
-            temp_surface.blit(frame, (sway_offset, 0))
-            frame = temp_surface
+        # More pronounced menacing sway effect
+        sway_offset = int(math.sin(i * math.pi / 2) * 3)
+        breathing_offset = int(math.cos(i * math.pi / 2) * 2)
+
+        # Create pronounced movement
+        temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+        temp_surface.blit(frame, (sway_offset, breathing_offset))
+        frame = temp_surface
+
+        # Add subtle red glow on certain frames for menacing effect
+        if i % 2 == 0:
+            glow_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            glow_surface.blit(frame, (0, 0))
+            pygame.draw.rect(glow_surface, (255, 0, 0, 30), (0, 0, ENTITY_SIZE, ENTITY_SIZE))
+            frame = glow_surface
 
         pygame.image.save(frame, f"assets/images/entities/enemy/idle_{i}.png")
 
-    # Walking animation frames (8 frames)
-    for i in range(8):
+    # Walking animation frames (4 frames with exaggerated aggressive movement)
+    for i in range(4):
         frame = base_enemy.copy()
-        # Walking animation with aggressive movement
-        bob_offset = int(math.sin(i * math.pi / 4) * 2)
-        if bob_offset != 0:
-            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
-            temp_surface.blit(frame, (0, bob_offset))
-            frame = temp_surface
+        # Exaggerated aggressive walking bob
+        bob_offset = int(math.sin(i * math.pi / 2) * 5)
+
+        # Add horizontal sway for more dynamic walking
+        sway_offset = int(math.cos(i * math.pi / 2) * 3)
+
+        # Create pronounced aggressive movement
+        temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+        temp_surface.blit(frame, (sway_offset, bob_offset))
+        frame = temp_surface
 
         pygame.image.save(frame, f"assets/images/entities/enemy/walk_{i}.png")
 
-    # Attack animation frames (6 frames)
-    for i in range(6):
+    # Attack animation frames (4 frames with dramatic weapon swing)
+    for i in range(4):
         frame = base_enemy.copy()
-        # Attack effect with weapon glow
-        if i in [2, 3]:  # Peak of attack
+
+        # Dramatic attack animation with weapon movement
+        if i == 0:  # Wind-up
+            # Pull weapon back aggressively
+            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            temp_surface.blit(frame, (-3, 2))
+            frame = temp_surface
+        elif i == 1:  # Mid-swing
+            # Weapon forward with body lean
+            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            temp_surface.blit(frame, (1, -1))
+            frame = temp_surface
+            # Add red motion blur
             glow_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
             glow_surface.blit(frame, (0, 0))
-            # Add red glow around weapon
             pygame.draw.rect(glow_surface, (255, 0, 0, 120), (24, 8, 8, 12))
             frame = glow_surface
+        elif i == 2:  # Impact
+            # Maximum extension with bright red glow
+            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            temp_surface.blit(frame, (4, -3))
+            frame = temp_surface
+            # Bright red impact glow
+            glow_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            glow_surface.blit(frame, (0, 0))
+            pygame.draw.rect(glow_surface, (255, 0, 0, 200), (22, 6, 10, 16))
+            frame = glow_surface
+        else:  # Recovery
+            # Return to neutral with recoil
+            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            temp_surface.blit(frame, (-2, 2))
+            frame = temp_surface
 
         pygame.image.save(frame, f"assets/images/entities/enemy/attack_{i}.png")
 
 def create_boss_animation_frames():
-    """Create animation frames for boss enemies"""
-    # Create a larger, more imposing boss sprite
+    """Create optimized animation frames for boss enemies with dramatic presence"""
+    # Create a larger, more imposing boss sprite (64x64)
     boss_surface = pygame.Surface((64, 64), pygame.SRCALPHA)
 
     # Boss body (larger and more detailed)
     pygame.draw.rect(boss_surface, DARK_RED, (16, 24, 32, 28))  # Main body
     pygame.draw.rect(boss_surface, BLACK, (18, 26, 28, 4))  # Dark armor
     pygame.draw.rect(boss_surface, DARK_GRAY, (20, 30, 24, 2))  # Armor details
+    pygame.draw.rect(boss_surface, RED, (22, 32, 20, 1))  # Armor highlight
 
     # Boss head (larger and more menacing)
     pygame.draw.rect(boss_surface, DARK_RED, (20, 8, 24, 20))  # Head
     pygame.draw.rect(boss_surface, RED, (22, 10, 20, 4))  # Head highlight
+    pygame.draw.rect(boss_surface, BLACK, (24, 12, 16, 2))  # Helmet detail
 
-    # Glowing eyes
+    # Glowing eyes (larger and more intimidating)
     pygame.draw.rect(boss_surface, RED, (24, 16, 4, 4))  # Left eye
     pygame.draw.rect(boss_surface, RED, (36, 16, 4, 4))  # Right eye
     pygame.draw.rect(boss_surface, WHITE, (25, 17, 2, 2))  # Eye glow
     pygame.draw.rect(boss_surface, WHITE, (37, 17, 2, 2))  # Eye glow
 
-    # Boss arms (larger)
+    # Boss arms (larger and more muscular)
     pygame.draw.rect(boss_surface, DARK_RED, (8, 28, 8, 16))  # Left arm
     pygame.draw.rect(boss_surface, DARK_RED, (48, 28, 8, 16))  # Right arm
+    pygame.draw.rect(boss_surface, RED, (9, 30, 6, 2))  # Left arm highlight
+    pygame.draw.rect(boss_surface, RED, (49, 30, 6, 2))  # Right arm highlight
 
-    # Boss legs
+    # Boss legs (more imposing)
     pygame.draw.rect(boss_surface, DARK_RED, (20, 52, 8, 8))  # Left leg
     pygame.draw.rect(boss_surface, DARK_RED, (36, 52, 8, 8))  # Right leg
+    pygame.draw.rect(boss_surface, RED, (21, 53, 6, 2))  # Left leg highlight
+    pygame.draw.rect(boss_surface, RED, (37, 53, 6, 2))  # Right leg highlight
 
-    # Boss weapon (massive axe)
+    # Boss weapon (massive glowing axe)
     pygame.draw.rect(boss_surface, DARK_BROWN, (56, 16, 4, 20))  # Handle
     pygame.draw.rect(boss_surface, DARK_GRAY, (52, 12, 12, 8))  # Axe head
     pygame.draw.rect(boss_surface, GRAY, (54, 14, 8, 4))  # Axe highlight
+    pygame.draw.rect(boss_surface, RED, (55, 15, 6, 2))  # Axe glow
 
-    # Idle animation frames (6 frames with intimidating presence)
-    for i in range(6):
+    # Idle animation frames (4 frames with dramatic intimidating presence)
+    for i in range(4):
         frame = boss_surface.copy()
-        # Intimidating breathing effect
-        breathing_offset = int(math.sin(i * math.pi / 3) * 1)
-        if breathing_offset != 0:
-            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
-            temp_surface.blit(frame, (0, breathing_offset))
-            frame = temp_surface
+        # Dramatic breathing effect - much more pronounced
+        breathing_offset = int(math.sin(i * math.pi / 2) * 4)
+        weapon_sway = int(math.cos(i * math.pi / 2) * 3)
 
-        # Add pulsing red aura
+        # Create dramatic movement
+        temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+        temp_surface.blit(frame, (weapon_sway, breathing_offset))
+        frame = temp_surface
+
+        # Add intense pulsing red aura
         if i % 2 == 0:
             aura_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
             aura_surface.blit(frame, (0, 0))
-            pygame.draw.rect(aura_surface, (255, 0, 0, 30), (0, 0, 64, 64))
+            pygame.draw.rect(aura_surface, (255, 0, 0, 50), (0, 0, 64, 64))
             frame = aura_surface
+
+        # Add eye glow intensification
+        if i == 1 or i == 3:
+            glow_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            glow_surface.blit(frame, (0, 0))
+            pygame.draw.rect(glow_surface, (255, 255, 255, 100), (24, 16, 4, 4))
+            pygame.draw.rect(glow_surface, (255, 255, 255, 100), (36, 16, 4, 4))
+            frame = glow_surface
 
         pygame.image.save(frame, f"assets/images/entities/boss/idle_{i}.png")
 
-    # Attack animation frames (8 frames with devastating swing)
-    for i in range(8):
+    # Attack animation frames (4 frames with devastating swing)
+    for i in range(4):
         frame = boss_surface.copy()
-        # Massive attack animation
-        if i in [3, 4, 5]:  # Peak of attack
+
+        # Dramatic boss attack animation
+        if i == 0:  # Wind-up - massive pullback
+            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            temp_surface.blit(frame, (-6, 4))
+            frame = temp_surface
+            # Charging energy effect
             glow_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
             glow_surface.blit(frame, (0, 0))
-            # Massive weapon glow
+            pygame.draw.rect(glow_surface, (255, 0, 0, 80), (50, 10, 14, 12))
+            frame = glow_surface
+        elif i == 1:  # Mid-swing - forward momentum
+            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            temp_surface.blit(frame, (3, -2))
+            frame = temp_surface
+            # Motion blur effect
+            glow_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            glow_surface.blit(frame, (0, 0))
             pygame.draw.rect(glow_surface, (255, 100, 100, 150), (48, 8, 16, 24))
+            frame = glow_surface
+        elif i == 2:  # Impact - maximum extension
+            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            temp_surface.blit(frame, (8, -6))
+            frame = temp_surface
+            # Massive impact glow
+            glow_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            glow_surface.blit(frame, (0, 0))
+            pygame.draw.rect(glow_surface, (255, 255, 255, 200), (46, 6, 18, 28))
+            # Screen shake effect simulation
+            pygame.draw.rect(glow_surface, (255, 0, 0, 100), (0, 0, 64, 64))
+            frame = glow_surface
+        else:  # Recovery - return with recoil
+            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            temp_surface.blit(frame, (-4, 3))
+            frame = temp_surface
+            # Residual energy
+            glow_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            glow_surface.blit(frame, (0, 0))
+            pygame.draw.rect(glow_surface, (255, 0, 0, 60), (52, 12, 12, 8))
             frame = glow_surface
 
         pygame.image.save(frame, f"assets/images/entities/boss/attack_{i}.png")
+
+def create_enemy_type_variants():
+    """Create visual variants for different enemy types"""
+    # Enemy type color schemes
+    enemy_types = {
+        "normal": (DARK_RED, RED),
+        "fast": (DARK_GREEN, GREEN),
+        "tank": (DARK_BLUE, BLUE),
+        "sniper": (DARK_YELLOW, YELLOW),
+        "berserker": (PURPLE, MAGENTA)
+    }
+
+    # Create directories for enemy types
+    for enemy_type in enemy_types.keys():
+        os.makedirs(f"assets/images/entities/enemy_{enemy_type}", exist_ok=True)
+
+    for enemy_type, (primary_color, accent_color) in enemy_types.items():
+        # Create base enemy sprite with type-specific colors
+        enemy_surface = pygame.Surface((ENTITY_SIZE, ENTITY_SIZE), pygame.SRCALPHA)
+
+        # Body (type-specific coloring)
+        pygame.draw.rect(enemy_surface, primary_color, (8, 14, 16, 14))  # Main body
+        pygame.draw.rect(enemy_surface, BLACK, (9, 15, 14, 2))  # Dark clothing
+        pygame.draw.rect(enemy_surface, DARK_GRAY, (10, 17, 12, 1))  # Belt/armor
+
+        # Head
+        pygame.draw.rect(enemy_surface, primary_color, (10, 6, 12, 10))  # Head
+        pygame.draw.rect(enemy_surface, accent_color, (11, 7, 10, 2))  # Head highlight
+
+        # Face features
+        pygame.draw.rect(enemy_surface, BLACK, (12, 10, 2, 2))  # Left eye
+        pygame.draw.rect(enemy_surface, BLACK, (18, 10, 2, 2))  # Right eye
+        pygame.draw.rect(enemy_surface, accent_color, (13, 11, 1, 1))  # Eye glow
+        pygame.draw.rect(enemy_surface, accent_color, (19, 11, 1, 1))  # Eye glow
+        pygame.draw.rect(enemy_surface, BLACK, (14, 13, 4, 2))  # Mouth/tusks
+
+        # Arms
+        pygame.draw.rect(enemy_surface, primary_color, (4, 16, 4, 8))  # Left arm
+        pygame.draw.rect(enemy_surface, primary_color, (24, 16, 4, 8))  # Right arm
+
+        # Legs
+        pygame.draw.rect(enemy_surface, primary_color, (10, 28, 4, 4))  # Left leg
+        pygame.draw.rect(enemy_surface, primary_color, (18, 28, 4, 4))  # Right leg
+
+        # Type-specific weapon/features
+        if enemy_type == "fast":
+            # Dual daggers
+            pygame.draw.rect(enemy_surface, SILVER, (28, 14, 2, 6))  # Right dagger
+            pygame.draw.rect(enemy_surface, SILVER, (2, 14, 2, 6))   # Left dagger
+            pygame.draw.rect(enemy_surface, DARK_BROWN, (28, 20, 2, 2))  # Right handle
+            pygame.draw.rect(enemy_surface, DARK_BROWN, (2, 20, 2, 2))   # Left handle
+        elif enemy_type == "tank":
+            # Large shield
+            pygame.draw.rect(enemy_surface, SILVER, (0, 12, 4, 12))  # Shield
+            pygame.draw.rect(enemy_surface, primary_color, (1, 14, 2, 8))  # Shield center
+            # Heavy weapon
+            pygame.draw.rect(enemy_surface, DARK_GRAY, (28, 10, 3, 12))  # Heavy weapon
+        elif enemy_type == "sniper":
+            # Long rifle
+            pygame.draw.rect(enemy_surface, DARK_BROWN, (28, 15, 4, 2))  # Rifle barrel
+            pygame.draw.rect(enemy_surface, DARK_GRAY, (26, 16, 2, 2))   # Scope
+            pygame.draw.rect(enemy_surface, BROWN, (24, 17, 4, 2))       # Stock
+        elif enemy_type == "berserker":
+            # Massive axe
+            pygame.draw.rect(enemy_surface, DARK_BROWN, (28, 12, 2, 10))  # Handle
+            pygame.draw.rect(enemy_surface, DARK_GRAY, (26, 8, 6, 6))     # Axe head
+            pygame.draw.rect(enemy_surface, accent_color, (27, 9, 4, 4))  # Glowing axe
+        else:  # normal
+            # Standard axe
+            pygame.draw.rect(enemy_surface, DARK_BROWN, (28, 12, 2, 8))  # Handle
+            pygame.draw.rect(enemy_surface, DARK_GRAY, (26, 10, 6, 4))   # Axe head
+            pygame.draw.rect(enemy_surface, GRAY, (27, 11, 4, 2))        # Axe highlight
+
+        # Create optimized animation frames for this enemy type (4 frames each)
+        # Idle animation frames (4 frames with pronounced type-specific effects)
+        for i in range(4):
+            frame = enemy_surface.copy()
+            # Type-specific idle effects - more pronounced
+            if enemy_type == "fast":
+                # Quick jittery movement - much more visible
+                jitter_x = int(math.sin(i * math.pi / 2) * 3)
+                jitter_y = int(math.cos(i * math.pi / 2) * 2)
+                temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                temp_surface.blit(frame, (jitter_x, jitter_y))
+                frame = temp_surface
+                # Add speed lines effect
+                if i % 2 == 0:
+                    speed_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    speed_surface.blit(frame, (0, 0))
+                    pygame.draw.rect(speed_surface, (accent_color[0], accent_color[1], accent_color[2], 40), (0, 0, ENTITY_SIZE, ENTITY_SIZE))
+                    frame = speed_surface
+            elif enemy_type == "tank":
+                # Slow, heavy breathing - more pronounced
+                breathing_offset = int(math.sin(i * math.pi / 2) * 2)
+                temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                temp_surface.blit(frame, (0, breathing_offset))
+                frame = temp_surface
+                # Add armor gleam
+                if i == 1 or i == 3:
+                    gleam_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    gleam_surface.blit(frame, (0, 0))
+                    pygame.draw.rect(gleam_surface, (255, 255, 255, 60), (0, 12, 4, 12))  # Shield gleam
+                    frame = gleam_surface
+            elif enemy_type == "berserker":
+                # Aggressive pulsing - much more intense
+                breathing_offset = int(math.sin(i * math.pi / 2) * 3)
+                weapon_sway = int(math.cos(i * math.pi / 2) * 2)
+                temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                temp_surface.blit(frame, (weapon_sway, breathing_offset))
+                frame = temp_surface
+                # Intense rage aura
+                pulse_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                pulse_surface.blit(frame, (0, 0))
+                alpha = 60 if i % 2 == 0 else 30
+                pygame.draw.rect(pulse_surface, (255, 0, 255, alpha), (0, 0, ENTITY_SIZE, ENTITY_SIZE))
+                frame = pulse_surface
+            elif enemy_type == "sniper":
+                # Steady aim with slight scope adjustment
+                scope_adjust = int(math.sin(i * math.pi / 2) * 1)
+                temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                temp_surface.blit(frame, (scope_adjust, 0))
+                frame = temp_surface
+                # Scope glint
+                if i == 2:
+                    glint_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    glint_surface.blit(frame, (0, 0))
+                    pygame.draw.rect(glint_surface, (255, 255, 255, 120), (26, 16, 2, 2))  # Scope glint
+                    frame = glint_surface
+            else:  # normal
+                # Standard menacing sway
+                sway_offset = int(math.sin(i * math.pi / 2) * 2)
+                breathing_offset = int(math.cos(i * math.pi / 2) * 1)
+                temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                temp_surface.blit(frame, (sway_offset, breathing_offset))
+                frame = temp_surface
+
+            pygame.image.save(frame, f"assets/images/entities/enemy_{enemy_type}/idle_{i}.png")
+
+        # Walk animation frames (4 frames with exaggerated type-specific movement)
+        for i in range(4):
+            frame = enemy_surface.copy()
+            # Type-specific movement - much more pronounced
+            if enemy_type == "fast":
+                # Quick, erratic movement - very visible
+                bob_offset = int(math.sin(i * math.pi / 2) * 6)
+                sway_offset = int(math.cos(i * math.pi / 2) * 4)
+            elif enemy_type == "tank":
+                # Slow, heavy movement - ground-shaking
+                bob_offset = int(math.sin(i * math.pi / 2) * 3)
+                sway_offset = int(math.cos(i * math.pi / 2) * 1)
+            elif enemy_type == "berserker":
+                # Aggressive charging movement
+                bob_offset = int(math.sin(i * math.pi / 2) * 5)
+                sway_offset = int(math.cos(i * math.pi / 2) * 3)
+            elif enemy_type == "sniper":
+                # Careful, measured movement
+                bob_offset = int(math.sin(i * math.pi / 2) * 2)
+                sway_offset = int(math.cos(i * math.pi / 2) * 1)
+            else:  # normal
+                # Standard aggressive movement
+                bob_offset = int(math.sin(i * math.pi / 2) * 4)
+                sway_offset = int(math.cos(i * math.pi / 2) * 2)
+
+            temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+            temp_surface.blit(frame, (sway_offset, bob_offset))
+            frame = temp_surface
+
+            pygame.image.save(frame, f"assets/images/entities/enemy_{enemy_type}/walk_{i}.png")
+
+        # Attack animation frames (4 frames with dramatic type-specific attacks)
+        for i in range(4):
+            frame = enemy_surface.copy()
+
+            # Dramatic type-specific attack animations
+            if i == 0:  # Wind-up
+                if enemy_type == "fast":
+                    # Quick pullback
+                    temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    temp_surface.blit(frame, (-2, 1))
+                    frame = temp_surface
+                elif enemy_type == "tank":
+                    # Heavy wind-up
+                    temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    temp_surface.blit(frame, (-3, 2))
+                    frame = temp_surface
+                elif enemy_type == "berserker":
+                    # Massive wind-up
+                    temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    temp_surface.blit(frame, (-4, 3))
+                    frame = temp_surface
+                else:
+                    # Standard wind-up
+                    temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    temp_surface.blit(frame, (-2, 1))
+                    frame = temp_surface
+            elif i == 1:  # Mid-attack
+                if enemy_type == "fast":
+                    # Quick strike
+                    temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    temp_surface.blit(frame, (2, -1))
+                    frame = temp_surface
+                elif enemy_type == "tank":
+                    # Heavy swing
+                    temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    temp_surface.blit(frame, (1, -1))
+                    frame = temp_surface
+                elif enemy_type == "berserker":
+                    # Berserker fury
+                    temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    temp_surface.blit(frame, (3, -2))
+                    frame = temp_surface
+                else:
+                    # Standard swing
+                    temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    temp_surface.blit(frame, (1, -1))
+                    frame = temp_surface
+            elif i == 2:  # Impact
+                # Maximum extension with type-specific effects
+                if enemy_type == "fast":
+                    temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    temp_surface.blit(frame, (4, -2))
+                    frame = temp_surface
+                    # Quick strike glow
+                    glow_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    glow_surface.blit(frame, (0, 0))
+                    pygame.draw.rect(glow_surface, (accent_color[0], accent_color[1], accent_color[2], 150), (26, 12, 6, 8))
+                    frame = glow_surface
+                elif enemy_type == "tank":
+                    temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    temp_surface.blit(frame, (2, -1))
+                    frame = temp_surface
+                    # Heavy impact glow
+                    glow_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    glow_surface.blit(frame, (0, 0))
+                    pygame.draw.rect(glow_surface, (accent_color[0], accent_color[1], accent_color[2], 180), (0, 10, 8, 16))
+                    frame = glow_surface
+                elif enemy_type == "sniper":
+                    temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    temp_surface.blit(frame, (1, 0))
+                    frame = temp_surface
+                    # Muzzle flash
+                    glow_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    glow_surface.blit(frame, (0, 0))
+                    pygame.draw.rect(glow_surface, (255, 255, 0, 200), (28, 14, 6, 4))
+                    frame = glow_surface
+                elif enemy_type == "berserker":
+                    temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    temp_surface.blit(frame, (6, -4))
+                    frame = temp_surface
+                    # Massive berserker glow
+                    glow_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    glow_surface.blit(frame, (0, 0))
+                    pygame.draw.rect(glow_surface, (accent_color[0], accent_color[1], accent_color[2], 200), (24, 6, 8, 16))
+                    frame = glow_surface
+                else:
+                    temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    temp_surface.blit(frame, (3, -2))
+                    frame = temp_surface
+                    # Standard weapon glow
+                    glow_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                    glow_surface.blit(frame, (0, 0))
+                    pygame.draw.rect(glow_surface, (255, 0, 0, 160), (24, 8, 8, 12))
+                    frame = glow_surface
+            else:  # Recovery
+                # Return with recoil
+                temp_surface = pygame.Surface(frame.get_size(), pygame.SRCALPHA)
+                temp_surface.blit(frame, (-1, 1))
+                frame = temp_surface
+
+            pygame.image.save(frame, f"assets/images/entities/enemy_{enemy_type}/attack_{i}.png")
 
 # ===== UI ELEMENT GENERATION =====
 
@@ -656,18 +1048,283 @@ def create_particle_effects():
             filename = f"assets/images/effects/particles/{name}_{size}.png"
             pygame.image.save(particle, filename)
 
+# ===== EQUIPMENT ICON GENERATION =====
+
+def create_equipment_icons():
+    """Create equipment icons for weapons, armor, and accessories"""
+    icon_size = 32
+
+    # Weapon icons
+    weapon_types = [
+        ("sword", SILVER, GOLD),
+        ("rifle", DARK_GRAY, SILVER),
+        ("cannon", DARK_GRAY, ORANGE),
+        ("blaster", CYAN, WHITE),
+        ("launcher", DARK_RED, RED)
+    ]
+
+    for weapon_name, primary_color, accent_color in weapon_types:
+        weapon_icon = pygame.Surface((icon_size, icon_size), pygame.SRCALPHA)
+
+        if weapon_name == "sword":
+            # Sword blade
+            pygame.draw.rect(weapon_icon, primary_color, (14, 4, 4, 20))
+            pygame.draw.rect(weapon_icon, WHITE, (15, 5, 2, 18))
+            # Crossguard
+            pygame.draw.rect(weapon_icon, accent_color, (10, 22, 12, 3))
+            # Handle
+            pygame.draw.rect(weapon_icon, DARK_BROWN, (14, 25, 4, 6))
+
+        elif weapon_name == "rifle":
+            # Rifle barrel
+            pygame.draw.rect(weapon_icon, primary_color, (8, 14, 20, 4))
+            pygame.draw.rect(weapon_icon, accent_color, (9, 15, 18, 2))
+            # Stock
+            pygame.draw.rect(weapon_icon, DARK_BROWN, (4, 16, 8, 6))
+            # Scope
+            pygame.draw.rect(weapon_icon, BLACK, (16, 12, 4, 2))
+
+        elif weapon_name == "cannon":
+            # Cannon barrel
+            pygame.draw.rect(weapon_icon, primary_color, (6, 12, 20, 8))
+            pygame.draw.rect(weapon_icon, BLACK, (24, 14, 4, 4))  # Muzzle
+            # Base
+            pygame.draw.rect(weapon_icon, DARK_GRAY, (8, 20, 16, 6))
+
+        elif weapon_name == "blaster":
+            # Energy weapon body
+            pygame.draw.rect(weapon_icon, primary_color, (10, 12, 12, 8))
+            pygame.draw.rect(weapon_icon, accent_color, (11, 13, 10, 6))
+            # Energy core
+            pygame.draw.circle(weapon_icon, WHITE, (16, 16), 3)
+            pygame.draw.circle(weapon_icon, primary_color, (16, 16), 2)
+
+        elif weapon_name == "launcher":
+            # Launcher tube
+            pygame.draw.rect(weapon_icon, primary_color, (6, 10, 20, 12))
+            pygame.draw.rect(weapon_icon, accent_color, (7, 11, 18, 10))
+            # Grip
+            pygame.draw.rect(weapon_icon, DARK_BROWN, (12, 22, 8, 6))
+
+        pygame.image.save(weapon_icon, f"assets/images/equipment/weapons/{weapon_name}.png")
+
+    # Armor icons
+    armor_types = [
+        ("vest", DARK_BLUE, LIGHT_BLUE),
+        ("plate", SILVER, WHITE),
+        ("mail", DARK_GRAY, GRAY),
+        ("shield", GOLD, YELLOW),
+        ("barrier", CYAN, WHITE)
+    ]
+
+    for armor_name, primary_color, accent_color in armor_types:
+        armor_icon = pygame.Surface((icon_size, icon_size), pygame.SRCALPHA)
+
+        if armor_name == "vest":
+            # Vest body
+            pygame.draw.rect(armor_icon, primary_color, (8, 8, 16, 20))
+            pygame.draw.rect(armor_icon, accent_color, (9, 9, 14, 2))
+            # Straps
+            pygame.draw.rect(armor_icon, BLACK, (6, 10, 2, 16))
+            pygame.draw.rect(armor_icon, BLACK, (24, 10, 2, 16))
+
+        elif armor_name == "plate":
+            # Plate armor
+            pygame.draw.rect(armor_icon, primary_color, (6, 6, 20, 22))
+            pygame.draw.rect(armor_icon, accent_color, (7, 7, 18, 2))
+            # Armor segments
+            pygame.draw.rect(armor_icon, DARK_GRAY, (6, 14, 20, 1))
+            pygame.draw.rect(armor_icon, DARK_GRAY, (6, 20, 20, 1))
+
+        elif armor_name == "mail":
+            # Chain mail pattern
+            pygame.draw.rect(armor_icon, primary_color, (8, 8, 16, 20))
+            # Chain pattern
+            for y in range(8, 28, 4):
+                for x in range(8, 24, 4):
+                    pygame.draw.circle(armor_icon, accent_color, (x, y), 1)
+
+        elif armor_name == "shield":
+            # Shield shape
+            pygame.draw.ellipse(armor_icon, primary_color, (6, 4, 20, 24))
+            pygame.draw.ellipse(armor_icon, accent_color, (8, 6, 16, 20))
+            # Shield boss
+            pygame.draw.circle(armor_icon, WHITE, (16, 16), 4)
+            pygame.draw.circle(armor_icon, primary_color, (16, 16), 3)
+
+        elif armor_name == "barrier":
+            # Energy barrier
+            pygame.draw.rect(armor_icon, primary_color, (4, 4, 24, 24))
+            pygame.draw.rect(armor_icon, accent_color, (6, 6, 20, 20))
+            # Energy lines
+            for i in range(3):
+                y = 10 + i * 4
+                pygame.draw.rect(armor_icon, WHITE, (8, y, 16, 1))
+
+        pygame.image.save(armor_icon, f"assets/images/equipment/armor/{armor_name}.png")
+
+    # Accessory icons
+    accessory_types = [
+        ("ring", GOLD, YELLOW),
+        ("amulet", PURPLE, MAGENTA),
+        ("charm", GREEN, LIME),
+        ("orb", CYAN, WHITE),
+        ("crystal", BLUE, LIGHT_BLUE)
+    ]
+
+    for accessory_name, primary_color, accent_color in accessory_types:
+        accessory_icon = pygame.Surface((icon_size, icon_size), pygame.SRCALPHA)
+
+        if accessory_name == "ring":
+            # Ring band
+            pygame.draw.circle(accessory_icon, primary_color, (16, 16), 8)
+            pygame.draw.circle(accessory_icon, BLACK, (16, 16), 5)
+            # Gem
+            pygame.draw.circle(accessory_icon, accent_color, (16, 12), 3)
+            pygame.draw.circle(accessory_icon, WHITE, (16, 12), 2)
+
+        elif accessory_name == "amulet":
+            # Amulet chain
+            pygame.draw.rect(accessory_icon, SILVER, (15, 4, 2, 12))
+            # Amulet pendant
+            pygame.draw.ellipse(accessory_icon, primary_color, (10, 16, 12, 12))
+            pygame.draw.ellipse(accessory_icon, accent_color, (12, 18, 8, 8))
+
+        elif accessory_name == "charm":
+            # Charm shape (clover)
+            pygame.draw.circle(accessory_icon, primary_color, (12, 12), 4)
+            pygame.draw.circle(accessory_icon, primary_color, (20, 12), 4)
+            pygame.draw.circle(accessory_icon, primary_color, (16, 8), 4)
+            pygame.draw.circle(accessory_icon, primary_color, (16, 16), 4)
+            pygame.draw.rect(accessory_icon, DARK_BROWN, (15, 20, 2, 8))
+
+        elif accessory_name == "orb":
+            # Magical orb
+            pygame.draw.circle(accessory_icon, primary_color, (16, 16), 10)
+            pygame.draw.circle(accessory_icon, accent_color, (16, 16), 8)
+            pygame.draw.circle(accessory_icon, WHITE, (16, 16), 6)
+            # Magical sparkles
+            pygame.draw.rect(accessory_icon, WHITE, (8, 8, 2, 2))
+            pygame.draw.rect(accessory_icon, WHITE, (22, 10, 2, 2))
+            pygame.draw.rect(accessory_icon, WHITE, (10, 22, 2, 2))
+
+        elif accessory_name == "crystal":
+            # Crystal shape
+            points = [(16, 6), (10, 16), (16, 26), (22, 16)]
+            pygame.draw.polygon(accessory_icon, primary_color, points)
+            # Inner crystal
+            inner_points = [(16, 10), (13, 16), (16, 22), (19, 16)]
+            pygame.draw.polygon(accessory_icon, accent_color, inner_points)
+
+        pygame.image.save(accessory_icon, f"assets/images/equipment/accessories/{accessory_name}.png")
+
+def create_rarity_borders():
+    """Create rarity border overlays for equipment"""
+    border_size = 36  # Slightly larger than icon to create border effect
+
+    rarity_colors = {
+        "common": (200, 200, 200),
+        "uncommon": (0, 255, 0),
+        "rare": (0, 100, 255),
+        "epic": (128, 0, 128)
+    }
+
+    for rarity, color in rarity_colors.items():
+        border_surface = pygame.Surface((border_size, border_size), pygame.SRCALPHA)
+
+        # Outer glow effect
+        for i in range(3):
+            alpha = 100 - (i * 30)
+            glow_color = (*color, alpha)
+            pygame.draw.rect(border_surface, glow_color, (i, i, border_size - 2*i, border_size - 2*i), 1)
+
+        # Main border
+        pygame.draw.rect(border_surface, color, (0, 0, border_size, border_size), 2)
+
+        pygame.image.save(border_surface, f"assets/images/equipment/borders/{rarity}_border.png")
+
+def create_special_item_icons():
+    """Create icons for special items not yet created"""
+    icon_size = 32
+
+    # Shield boost icon
+    shield_icon = pygame.Surface((icon_size, icon_size), pygame.SRCALPHA)
+    pygame.draw.ellipse(shield_icon, LIGHT_BLUE, (4, 4, 24, 24))
+    pygame.draw.ellipse(shield_icon, CYAN, (6, 6, 20, 20))
+    pygame.draw.circle(shield_icon, WHITE, (16, 16), 6)
+    pygame.draw.circle(shield_icon, LIGHT_BLUE, (16, 16), 4)
+    # Shield pattern
+    pygame.draw.rect(shield_icon, WHITE, (14, 10, 4, 12))
+    pygame.draw.rect(shield_icon, WHITE, (10, 14, 12, 4))
+    pygame.image.save(shield_icon, "assets/images/shield_boost.png")
+
+    # XP boost icon
+    xp_icon = pygame.Surface((icon_size, icon_size), pygame.SRCALPHA)
+    pygame.draw.circle(xp_icon, GOLD, (16, 16), 12)
+    pygame.draw.circle(xp_icon, YELLOW, (16, 16), 10)
+    # Star pattern
+    star_points = []
+    for i in range(10):
+        angle = i * math.pi / 5
+        if i % 2 == 0:
+            radius = 8
+        else:
+            radius = 4
+        x = 16 + int(radius * math.cos(angle - math.pi/2))
+        y = 16 + int(radius * math.sin(angle - math.pi/2))
+        star_points.append((x, y))
+    pygame.draw.polygon(xp_icon, WHITE, star_points)
+    pygame.image.save(xp_icon, "assets/images/xp_boost.png")
+
+    # Multi-shot icon
+    multishot_icon = pygame.Surface((icon_size, icon_size), pygame.SRCALPHA)
+    # Three projectiles
+    pygame.draw.circle(multishot_icon, ORANGE, (8, 16), 3)
+    pygame.draw.circle(multishot_icon, ORANGE, (16, 12), 3)
+    pygame.draw.circle(multishot_icon, ORANGE, (24, 16), 3)
+    # Trails
+    pygame.draw.rect(multishot_icon, YELLOW, (2, 15, 6, 2))
+    pygame.draw.rect(multishot_icon, YELLOW, (10, 11, 6, 2))
+    pygame.draw.rect(multishot_icon, YELLOW, (18, 15, 6, 2))
+    pygame.image.save(multishot_icon, "assets/images/multi_shot_boost.png")
+
+    # Invincibility icon
+    invincibility_icon = pygame.Surface((icon_size, icon_size), pygame.SRCALPHA)
+    pygame.draw.circle(invincibility_icon, WHITE, (16, 16), 12)
+    pygame.draw.circle(invincibility_icon, GOLD, (16, 16), 10)
+    # Sparkle effect
+    for i in range(8):
+        angle = i * math.pi / 4
+        x = 16 + int(8 * math.cos(angle))
+        y = 16 + int(8 * math.sin(angle))
+        pygame.draw.circle(invincibility_icon, WHITE, (x, y), 2)
+    pygame.image.save(invincibility_icon, "assets/images/invincibility_boost.png")
+
+# Create equipment directories
+os.makedirs("assets/images/equipment", exist_ok=True)
+os.makedirs("assets/images/equipment/weapons", exist_ok=True)
+os.makedirs("assets/images/equipment/armor", exist_ok=True)
+os.makedirs("assets/images/equipment/accessories", exist_ok=True)
+os.makedirs("assets/images/equipment/borders", exist_ok=True)
+
 # Generate all UI elements
 create_modern_button_styles()
 create_ui_panels()
 create_ui_icons()
 create_particle_effects()
 
+# Generate equipment assets
+create_equipment_icons()
+create_rarity_borders()
+create_special_item_icons()
+
 # Generate all animation frames
 create_player_animation_frames()
 create_enemy_animation_frames()
+create_enemy_type_variants()
 create_boss_animation_frames()
 
-print("Enhanced assets, UI elements, and animation frames generated successfully!")
+print("Enhanced assets, UI elements, equipment icons, and animation frames generated successfully!")
 
 # Quit pygame
 pygame.quit()

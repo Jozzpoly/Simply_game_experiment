@@ -154,8 +154,9 @@ class SpriteAnimator:
 class EnhancedSpriteAnimator(SpriteAnimator):
     """Enhanced sprite animator that can load animation frames from files"""
 
-    def __init__(self, base_surface: pygame.Surface, entity_type: str = ""):
+    def __init__(self, base_surface: pygame.Surface, entity_type: str = "", enemy_type: str = ""):
         self.entity_type = entity_type
+        self.enemy_type = enemy_type
         super().__init__(base_surface)
 
         # Try to load animations from files after basic initialization
@@ -163,18 +164,23 @@ class EnhancedSpriteAnimator(SpriteAnimator):
             logger.debug(f"Loaded animations from files for {entity_type}")
 
     def _load_animations_from_files(self) -> bool:
-        """Load animation frames from PNG files"""
+        """Load animation frames from PNG files with enemy type support"""
         try:
-            base_path = f"assets/images/entities/{self.entity_type}"
+            # Use enemy type-specific path if available
+            if self.entity_type == "enemy" and self.enemy_type:
+                base_path = f"assets/images/entities/enemy_{self.enemy_type}"
+            else:
+                base_path = f"assets/images/entities/{self.entity_type}"
+
             if not os.path.exists(base_path):
                 logger.debug(f"Animation path does not exist: {base_path}")
                 return False
 
-            # Define animation types and their frame counts
+            # Define animation types and their frame counts (optimized for visibility)
             animation_configs = {
-                "idle": {"frames": 4, "duration": 15, "loop": True},
-                "walk": {"frames": 8, "duration": 4, "loop": True},
-                "attack": {"frames": 6, "duration": 3, "loop": False}
+                "idle": {"frames": 4, "duration": 20, "loop": True},
+                "walk": {"frames": 4, "duration": 8, "loop": True},
+                "attack": {"frames": 4, "duration": 6, "loop": False}
             }
 
             animations_loaded = 0
@@ -196,7 +202,7 @@ class EnhancedSpriteAnimator(SpriteAnimator):
                 if len(frames) == config["frames"]:
                     self.animations[anim_name] = Animation(frames, loop=config["loop"])
                     animations_loaded += 1
-                    logger.debug(f"Loaded {anim_name} animation with {len(frames)} frames")
+                    logger.debug(f"Loaded {anim_name} animation with {len(frames)} frames for {base_path}")
                 else:
                     logger.debug(f"Incomplete animation frames for {anim_name} in {base_path}")
 

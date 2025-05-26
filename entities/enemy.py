@@ -3,6 +3,7 @@ import random
 import math
 from entities.entity import Entity
 from entities.projectile import Projectile
+from utils.animation_system import EnhancedSpriteAnimator
 from utils.constants import *
 
 class Enemy(Entity):
@@ -78,6 +79,12 @@ class Enemy(Entity):
         self.visual_state = "normal"  # normal, aggressive, retreating, coordinating
         self.color_transition_speed = 5  # Speed of color transitions
         self.state_indicator_alpha = 0  # Alpha for state indicators
+
+        # Initialize animation system with enemy type support
+        self.original_image = self.image.copy()
+        self.animator = EnhancedSpriteAnimator(self.original_image, "enemy", self.enemy_type)
+        self.is_moving = False
+        self.is_attacking = False
 
     def _apply_enemy_type_modifiers(self, difficulty_level: int) -> None:
         """Apply stat modifiers based on enemy type"""
@@ -271,6 +278,14 @@ class Enemy(Entity):
         # Update visual state and color transitions
         self._update_visual_state()
         self._update_color_transitions()
+
+        # Update animation system
+        self.is_moving = self.velocity.length() > 0.1
+        self.is_attacking = self.state == "attack" and self.can_see_player
+        self.animator.update(self.is_moving, self.is_attacking)
+
+        # Update sprite image from animation
+        self.image = self.animator.get_current_surface()
 
     def _choose_random_direction(self):
         """Choose a random direction for movement"""

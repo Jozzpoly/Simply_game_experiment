@@ -1,6 +1,7 @@
 import pygame
 import random
 import math
+import os
 from typing import Optional
 from entities.enemy import Enemy
 from entities.projectile import Projectile
@@ -25,9 +26,10 @@ class BossEnemy(Enemy):
         # Boss XP reward (much higher than regular enemies)
         self.xp_reward = int(XP_PER_BOSS * (XP_DIFFICULTY_MULTIPLIER ** (difficulty_level - 1)))
 
-        # Boss visual properties
+        # Boss visual properties - load 64x64 boss sprite
         self.original_size = self.rect.size
         self.scale_factor = BOSS_SIZE_MULTIPLIER
+        self._load_boss_sprite()
         self._scale_sprite()
 
         # Boss behavior properties
@@ -52,6 +54,22 @@ class BossEnemy(Enemy):
         # Boss phases based on health
         self.phase = 1
         self.max_phases = 3
+
+    def _load_boss_sprite(self) -> None:
+        """Load the 64x64 boss sprite"""
+        try:
+            # Try to load boss idle frame 0 as the base sprite
+            boss_sprite_path = "assets/images/entities/boss/idle_0.png"
+            if os.path.exists(boss_sprite_path):
+                self.image = pygame.image.load(boss_sprite_path).convert_alpha()
+                self.rect = self.image.get_rect()
+                self.rect.center = (self.rect.centerx, self.rect.centery)
+            else:
+                # Fallback to regular enemy sprite if boss sprite not found
+                pass
+        except pygame.error:
+            # Fallback to regular enemy sprite if loading fails
+            pass
 
     def _scale_sprite(self) -> None:
         """Scale the boss sprite to be larger"""

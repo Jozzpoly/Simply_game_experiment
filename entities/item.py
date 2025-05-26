@@ -141,7 +141,7 @@ class ShieldBoost(Item):
     """Shield that absorbs damage for a limited time"""
 
     def __init__(self, x, y):
-        super().__init__(x, y, HEALTH_POTION_IMG)  # Reuse health potion image for now
+        super().__init__(x, y, SHIELD_BOOST_IMG)
         self.name = "Shield"
         self.description = f"Absorbs {SHIELD_ABSORPTION} damage"
 
@@ -160,7 +160,7 @@ class XPBoost(Item):
     """XP boost that gives bonus experience points"""
 
     def __init__(self, x, y):
-        super().__init__(x, y, DAMAGE_BOOST_IMG)  # Reuse damage boost image for now
+        super().__init__(x, y, XP_BOOST_IMG)
         self.name = "XP Boost"
         self.description = f"Grants {XP_BOOST_AMOUNT} bonus XP"
 
@@ -174,7 +174,7 @@ class MultiShotBoost(Item):
     """Multi-shot that allows player to shoot multiple projectiles"""
 
     def __init__(self, x, y):
-        super().__init__(x, y, FIRE_RATE_BOOST_IMG)  # Reuse fire rate image for now
+        super().__init__(x, y, MULTI_SHOT_BOOST_IMG)
         self.name = "Multi-Shot"
         self.description = f"Triple shot for {MULTI_SHOT_DURATION // 60} seconds"
 
@@ -191,7 +191,7 @@ class InvincibilityBoost(Item):
     """Temporary invincibility"""
 
     def __init__(self, x, y):
-        super().__init__(x, y, SPEED_BOOST_IMG)  # Reuse speed boost image for now
+        super().__init__(x, y, INVINCIBILITY_BOOST_IMG)
         self.name = "Invincibility"
         self.description = f"Invincible for {INVINCIBILITY_DURATION // 60} seconds"
 
@@ -236,8 +236,9 @@ class EquipmentItem(Item):
     """Equipment item that can be equipped by the player"""
 
     def __init__(self, x, y, equipment):
-        # Use a generic equipment image for now (reuse damage boost image)
-        super().__init__(x, y, DAMAGE_BOOST_IMG)
+        # Get equipment-specific icon from mapping
+        icon_path = EQUIPMENT_ICON_MAPPING.get(equipment.name, DAMAGE_BOOST_IMG)
+        super().__init__(x, y, icon_path)
         self.equipment = equipment
         self.name = equipment.get_display_name()
         self.description = f"Equipment: {equipment.equipment_type}"

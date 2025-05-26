@@ -758,8 +758,31 @@ class UpgradeScreen:
             # Equipped item
             equipped_item = equipment_manager.equipped[slot]
             if equipped_item:
-                item_text = equipped_item.get_display_name()
-                item_color = equipped_item.get_rarity_color()
+                # Draw equipment icon
+                icon = self._load_equipment_icon(equipped_item)
+                if icon:
+                    icon_x, icon_y = 200, y - 5
+                    # Scale icon to fit
+                    icon_scaled = pygame.transform.scale(icon, (24, 24))
+                    surface.blit(icon_scaled, (icon_x, icon_y))
+
+                    # Draw rarity border overlay
+                    border = self._load_rarity_border(equipped_item.rarity)
+                    if border:
+                        border_scaled = pygame.transform.scale(border, (28, 28))
+                        surface.blit(border_scaled, (icon_x - 2, icon_y - 2))
+
+                    # Draw item text next to icon
+                    item_text = equipped_item.get_display_name()
+                    item_color = equipped_item.get_rarity_color()
+                    item_surface = self.font_small.render(item_text, True, item_color)
+                    surface.blit(item_surface, (230, y))
+                else:
+                    # Fallback to text only
+                    item_text = equipped_item.get_display_name()
+                    item_color = equipped_item.get_rarity_color()
+                    item_surface = self.font_small.render(item_text, True, item_color)
+                    surface.blit(item_surface, (200, y))
 
                 # Show stats preview
                 stats_text = self._get_equipment_stats_text(equipped_item)
@@ -768,9 +791,8 @@ class UpgradeScreen:
             else:
                 item_text = "None (Click to equip)"
                 item_color = GRAY
-
-            item_surface = self.font_small.render(item_text, True, item_color)
-            surface.blit(item_surface, (200, y))
+                item_surface = self.font_small.render(item_text, True, item_color)
+                surface.blit(item_surface, (200, y))
 
         # Draw set bonuses
         set_bonuses = equipment_manager.get_active_set_bonuses()
@@ -830,10 +852,29 @@ class UpgradeScreen:
             # Store for click detection
             self.inventory_items[i] = {"item": item, "rect": item_rect}
 
-            # Item name and level
-            item_text = item.get_display_name()
-            item_surface = self.font_tiny.render(item_text, True, item_color)
-            surface.blit(item_surface, (x + 5, y + 5))
+            # Draw equipment icon
+            icon = self._load_equipment_icon(item)
+            if icon:
+                icon_x, icon_y = x + 5, y + 2
+                # Scale icon to fit in inventory slot
+                icon_scaled = pygame.transform.scale(icon, (20, 20))
+                surface.blit(icon_scaled, (icon_x, icon_y))
+
+                # Draw rarity border overlay
+                border = self._load_rarity_border(item.rarity)
+                if border:
+                    border_scaled = pygame.transform.scale(border, (24, 24))
+                    surface.blit(border_scaled, (icon_x - 2, icon_y - 2))
+
+                # Draw item text next to icon
+                item_text = item.get_display_name()
+                item_surface = self.font_tiny.render(item_text, True, item_color)
+                surface.blit(item_surface, (x + 30, y + 5))
+            else:
+                # Fallback to text only
+                item_text = item.get_display_name()
+                item_surface = self.font_tiny.render(item_text, True, item_color)
+                surface.blit(item_surface, (x + 5, y + 5))
 
             # Item stats preview
             stats_text = self._get_equipment_stats_text(item)
@@ -850,6 +891,26 @@ class UpgradeScreen:
                 stat_display = stat_name.replace("_", " ").title()
                 stats.append(f"{stat_display}: {formatted_bonus}")
         return ", ".join(stats[:2])  # Show first 2 stats
+
+    def _load_equipment_icon(self, equipment):
+        """Load equipment icon from the icon mapping"""
+        icon_path = EQUIPMENT_ICON_MAPPING.get(equipment.name)
+        if icon_path and os.path.exists(icon_path):
+            try:
+                return pygame.image.load(icon_path).convert_alpha()
+            except pygame.error:
+                pass
+        return None
+
+    def _load_rarity_border(self, rarity):
+        """Load rarity border overlay"""
+        border_path = f"assets/images/equipment/borders/{rarity.lower()}_border.png"
+        if os.path.exists(border_path):
+            try:
+                return pygame.image.load(border_path).convert_alpha()
+            except pygame.error:
+                pass
+        return None
 
     def _draw_achievements_tab(self, surface):
         """Draw the enhanced achievements tab with progress and chains"""

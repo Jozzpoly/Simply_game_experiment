@@ -128,7 +128,7 @@ MAX_ENEMIES_CAP = 60  # Maximum enemies regardless of level (increased for large
 # Boss enemy settings
 BOSS_HEALTH_MULTIPLIER = 3.0  # Boss health multiplier
 BOSS_DAMAGE_MULTIPLIER = 1.5  # Boss damage multiplier
-BOSS_SIZE_MULTIPLIER = 1.5   # Boss size multiplier
+BOSS_SIZE_MULTIPLIER = 2.0   # Boss size multiplier (64x64 sprites vs 32x32 regular)
 BOSS_SPAWN_LEVEL = 5         # Level interval for boss spawns
 
 # Pathfinding
@@ -254,6 +254,30 @@ EQUIPMENT_SET_BONUSES = {
 # Equipment Types
 EQUIPMENT_TYPES = ["weapon", "armor", "accessory"]
 
+# Equipment Icon Mapping
+EQUIPMENT_ICON_MAPPING = {
+    # Weapons
+    "Sword": "assets/images/equipment/weapons/sword.png",
+    "Rifle": "assets/images/equipment/weapons/rifle.png",
+    "Cannon": "assets/images/equipment/weapons/cannon.png",
+    "Blaster": "assets/images/equipment/weapons/blaster.png",
+    "Launcher": "assets/images/equipment/weapons/launcher.png",
+
+    # Armor
+    "Vest": "assets/images/equipment/armor/vest.png",
+    "Plate": "assets/images/equipment/armor/plate.png",
+    "Mail": "assets/images/equipment/armor/mail.png",
+    "Shield": "assets/images/equipment/armor/shield.png",
+    "Barrier": "assets/images/equipment/armor/barrier.png",
+
+    # Accessories
+    "Ring": "assets/images/equipment/accessories/ring.png",
+    "Amulet": "assets/images/equipment/accessories/amulet.png",
+    "Charm": "assets/images/equipment/accessories/charm.png",
+    "Orb": "assets/images/equipment/accessories/orb.png",
+    "Crystal": "assets/images/equipment/accessories/crystal.png"
+}
+
 # Weapon Stats
 WEAPON_BASE_STATS = {
     "damage_bonus": 0,
@@ -289,6 +313,10 @@ HEALTH_POTION_IMG = "assets/images/health_potion.png"
 DAMAGE_BOOST_IMG = "assets/images/damage_boost.png"
 SPEED_BOOST_IMG = "assets/images/speed_boost.png"
 FIRE_RATE_BOOST_IMG = "assets/images/fire_rate_boost.png"
+SHIELD_BOOST_IMG = "assets/images/shield_boost.png"
+XP_BOOST_IMG = "assets/images/xp_boost.png"
+MULTI_SHOT_BOOST_IMG = "assets/images/multi_shot_boost.png"
+INVINCIBILITY_BOOST_IMG = "assets/images/invincibility_boost.png"
 
 # Audio settings
 MASTER_VOLUME = 0.7
