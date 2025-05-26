@@ -230,3 +230,35 @@ def create_random_item(x, y):
         return InvincibilityBoost(x, y)
     else:
         return HealthPotion(x, y)  # Default fallback
+
+
+class EquipmentItem(Item):
+    """Equipment item that can be equipped by the player"""
+
+    def __init__(self, x, y, equipment):
+        # Use a generic equipment image for now (reuse damage boost image)
+        super().__init__(x, y, DAMAGE_BOOST_IMG)
+        self.equipment = equipment
+        self.name = equipment.get_display_name()
+        self.description = f"Equipment: {equipment.equipment_type}"
+
+    def collect(self, player):
+        """Add equipment to player's inventory or equip it"""
+        # Try to add to inventory first
+        if player.equipment_manager.add_to_inventory(self.equipment):
+            player.update_progression_stats("items_collected")
+            player.update_progression_stats("equipment_equipped")
+
+            # Check if player has full equipment set
+            equipped_count = sum(1 for eq in player.equipment_manager.equipped.values() if eq is not None)
+            if equipped_count == len(player.equipment_manager.equipped):
+                player.update_progression_stats("full_equipment_sets")
+
+            self.kill()
+            return True
+        else:
+            # If inventory is full, still remove the item but don't give the equipment
+            # This prevents items from staying on the ground forever
+            # TODO: Consider adding a message about full inventory
+            self.kill()
+            return True

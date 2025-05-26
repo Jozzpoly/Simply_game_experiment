@@ -48,7 +48,12 @@ class AudioManager:
             except pygame.error as e:
                 print(f"Warning: Could not load sound {file_path}: {e}")
                 # Create a placeholder sound
-                self.sounds[sound_name] = self._create_placeholder_sound(sound_name)
+                try:
+                    self.sounds[sound_name] = self._create_placeholder_sound(sound_name)
+                except Exception as placeholder_error:
+                    print(f"Warning: Could not create placeholder sound for {sound_name}: {placeholder_error}")
+                    # Create a minimal silent sound as last resort
+                    self.sounds[sound_name] = self._create_silent_sound()
 
     def _create_placeholder_sound(self, sound_name: str) -> pygame.mixer.Sound:
         """Create a simple placeholder sound using pygame's built-in sound generation"""
@@ -91,15 +96,61 @@ class AudioManager:
         try:
             import pygame.sndarray
             import numpy as np
-            arr_np = np.array(arr, dtype=np.int16)
+
+            # Get mixer configuration to match array format
+            _, _, mixer_channels = pygame.mixer.get_init()
+
+            # Create array with correct shape based on mixer channels
+            if mixer_channels == 1:  # Mono
+                # Convert stereo array to mono
+                arr_mono = []
+                for sample_pair in arr:
+                    arr_mono.append(sample_pair[0])  # Take left channel
+                arr_np = np.array(arr_mono, dtype=np.int16)
+            else:  # Stereo or more channels
+                arr_np = np.array(arr, dtype=np.int16)
+
             sound = pygame.sndarray.make_sound(arr_np)
             return sound
-        except ImportError:
-            # Fallback: create a very simple sound buffer
-            # This is a minimal sound that should work without numpy
-            buffer = b'\x00\x00' * frames * 2  # Silent sound as fallback
+
+        except (ImportError, ValueError) as e:
+            print(f"Warning: Could not create advanced sound for {sound_name}: {e}")
+            # Fallback: create a very simple silent sound buffer
+            try:
+                # Get mixer configuration for proper buffer size
+                _, _, mixer_channels = pygame.mixer.get_init()
+
+                # Create silent buffer with correct format
+                if mixer_channels == 1:  # Mono
+                    buffer = b'\x00\x00' * frames
+                else:  # Stereo
+                    buffer = b'\x00\x00\x00\x00' * frames
+
+                sound = pygame.mixer.Sound(buffer=buffer)
+                return sound
+            except Exception as fallback_error:
+                print(f"Warning: Could not create fallback sound: {fallback_error}")
+                # Create the most basic sound possible
+                buffer = b'\x00\x00' * 1000  # Very short silent sound
+                sound = pygame.mixer.Sound(buffer=buffer)
+                return sound
+
+    def _create_silent_sound(self) -> pygame.mixer.Sound:
+        """Create a minimal silent sound as absolute fallback"""
+        try:
+            # Create the most basic silent sound possible
+            buffer = b'\x00\x00' * 1000  # Very short silent sound
             sound = pygame.mixer.Sound(buffer=buffer)
             return sound
+        except Exception as e:
+            print(f"Critical: Could not create even a silent sound: {e}")
+            # This should never happen, but if it does, we'll create an empty sound object
+            # that won't crash the game
+            class DummySound:
+                def play(self): pass
+                def set_volume(self, _): pass  # Ignore volume parameter
+                def stop(self): pass
+            return DummySound()
 
     def _update_volumes(self) -> None:
         """Update all sound volumes based on current settings"""

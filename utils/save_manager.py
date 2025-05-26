@@ -32,6 +32,9 @@ class SaveManager:
             "upgrade_points": (0, 100)
         }
 
+        # Define required fields for progression data
+        self.progression_fields = ["skill_tree", "equipment_manager", "achievement_manager", "stats"]
+
     def save_game(self, game_data):
         """
         Save game data to a file with validation
@@ -140,6 +143,24 @@ class SaveManager:
                         player_data[field] = min_val
                     # Ensure field is within valid range
                     player_data[field] = max(min_val, min(player_data[field], max_val))
+
+            # Validate progression data if present
+            if "progression_data" in player_data and isinstance(player_data["progression_data"], dict):
+                progression_data = player_data["progression_data"]
+
+                # Validate that progression data has expected structure
+                for field in self.progression_fields:
+                    if field not in progression_data:
+                        print(f"Missing progression field: {field}")
+                        # Don't fail validation, just warn - progression data is optional
+
+                # Validate stats dictionary
+                if "stats" in progression_data and isinstance(progression_data["stats"], dict):
+                    stats = progression_data["stats"]
+                    # Ensure all stat values are non-negative integers
+                    for stat_name, value in stats.items():
+                        if not isinstance(value, (int, float)) or value < 0:
+                            stats[stat_name] = 0
 
         return True
 

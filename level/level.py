@@ -1,4 +1,6 @@
 import pygame
+import logging
+from typing import List, Tuple, Optional, Dict, Any
 from level.level_generator import LevelGenerator
 from entities.player import Player
 from entities.enemy import Enemy
@@ -7,6 +9,9 @@ from entities.item import create_random_item
 from utils.constants import *
 from utils.visual_effects import VisualEffectsManager
 from utils.animation_system import AnimationManager
+
+# Configure logging for level module
+logger = logging.getLogger(__name__)
 
 class Tile(pygame.sprite.Sprite):
     """A tile in the level (wall or floor)"""
@@ -28,45 +33,50 @@ class Tile(pygame.sprite.Sprite):
         self.rect.y = y * TILE_SIZE
 
 class Level:
-    """Manages the current level with improved features"""
+    """Manages the current level with improved features and performance optimizations"""
 
-    def __init__(self, audio_manager=None):
+    def __init__(self, audio_manager=None) -> None:
         # Audio manager for sound effects
         self.audio_manager = audio_manager
 
         # Sprite groups
-        self.all_sprites = pygame.sprite.Group()
-        self.walls = pygame.sprite.Group()
-        self.floors = pygame.sprite.Group()
-        self.enemies = pygame.sprite.Group()
-        self.projectiles = pygame.sprite.Group()
-        self.items = pygame.sprite.Group()
+        self.all_sprites: pygame.sprite.Group = pygame.sprite.Group()
+        self.walls: pygame.sprite.Group = pygame.sprite.Group()
+        self.floors: pygame.sprite.Group = pygame.sprite.Group()
+        self.enemies: pygame.sprite.Group = pygame.sprite.Group()
+        self.projectiles: pygame.sprite.Group = pygame.sprite.Group()
+        self.items: pygame.sprite.Group = pygame.sprite.Group()
 
         # Level generator
-        self.generator = None
-        self.current_level = 1
+        self.generator: Optional[LevelGenerator] = None
+        self.current_level: int = 1
 
         # Player
-        self.player = None
-        self.player_level_up = False  # Flag to indicate player leveled up
+        self.player: Optional[Player] = None
+        self.player_level_up: bool = False  # Flag to indicate player leveled up
 
         # Camera offset
-        self.camera_offset_x = 0
-        self.camera_offset_y = 0
+        self.camera_offset_x: int = 0
+        self.camera_offset_y: int = 0
 
         # Minimap
-        self.minimap_surface = None
-        self.minimap_base_surface = None  # Store the base minimap without player position
-        self.minimap_scale = 0.1  # Scale factor for minimap
-        self.last_player_minimap_pos = (0, 0)  # Store last player position on minimap
+        self.minimap_surface: Optional[pygame.Surface] = None
+        self.minimap_base_surface: Optional[pygame.Surface] = None  # Store the base minimap without player position
+        self.minimap_scale: float = 0.1  # Scale factor for minimap
+        self.last_player_minimap_pos: Tuple[int, int] = (0, 0)  # Store last player position on minimap
 
         # Enhanced visual systems
-        self.visual_effects = VisualEffectsManager()
-        self.animation_manager = AnimationManager()
+        self.visual_effects: VisualEffectsManager = VisualEffectsManager()
+        self.animation_manager: AnimationManager = AnimationManager()
 
         # XP gain message (will be migrated to animation manager)
-        self.xp_messages = []
-        self.message_duration = 60  # frames
+        self.xp_messages: List[Dict[str, Any]] = []
+        self.message_duration: int = 60  # frames
+
+        # Performance optimization: cache visible sprites
+        self._visible_sprites_cache: List[pygame.sprite.Sprite] = []
+        self._last_camera_pos: Tuple[int, int] = (0, 0)
+        self._cache_dirty: bool = True
 
     def generate_level(self, current_level=1, player=None):
         """Generate a new level with the current level number"""
@@ -187,19 +197,40 @@ class Level:
 
             # Check if an enemy was killed by this projectile
             if projectile.is_player_projectile and hasattr(projectile, 'killed_enemy') and projectile.killed_enemy:
-                # Add XP to player
-                xp_gained = XP_PER_ENEMY
-                leveled_up = self.player.add_xp(xp_gained)
+                # Get the enemy that was killed to determine XP reward
+                killed_enemy = projectile.killed_enemy_ref if hasattr(projectile, 'killed_enemy_ref') else None
 
-                # Add floating XP message
-                self.add_floating_text(f"+{xp_gained} XP", projectile.rect.centerx, projectile.rect.centery, YELLOW)
+                if killed_enemy:
+                    # Use enemy-specific XP reward
+                    base_xp = killed_enemy.xp_reward
 
-                # Set flag if player leveled up
-                if leveled_up:
-                    self.player_level_up = True
+                    # Apply XP bonus from player skills/equipment
+                    xp_bonus = self.player.get_xp_bonus()
+                    xp_gained = int(base_xp * (1.0 + xp_bonus))
+
+                    # Add XP to player
+                    leveled_up = self.player.add_xp(xp_gained)
+
+                    # Add floating XP message
+                    self.add_floating_text(f"+{xp_gained} XP", projectile.rect.centerx, projectile.rect.centery, YELLOW)
+
+                    # Update player stats for achievements
+                    if hasattr(killed_enemy, 'is_boss') and killed_enemy.is_boss:
+                        self.player.update_progression_stats("bosses_killed")
+                    else:
+                        self.player.update_progression_stats("enemies_killed")
+
+                    # Set flag if player leveled up
+                    if leveled_up:
+                        self.player_level_up = True
+
+                    # Check for equipment drop
+                    self._check_equipment_drop(killed_enemy, projectile.rect.centerx, projectile.rect.centery)
 
                 # Clear the flag so we don't add XP multiple times
                 projectile.killed_enemy = False
+                if hasattr(projectile, 'killed_enemy_ref'):
+                    projectile.killed_enemy_ref = None
 
         # Update items
         for item in self.items:
@@ -221,8 +252,18 @@ class Level:
         self.visual_effects.update()
         self.animation_manager.update()
 
-    def update_messages(self):
-        """Update floating messages"""
+        # Periodic cleanup of dead sprites (every 60 frames to avoid performance impact)
+        if hasattr(self, '_cleanup_timer'):
+            self._cleanup_timer += 1
+        else:
+            self._cleanup_timer = 0
+
+        if self._cleanup_timer >= 60:  # Every second at 60 FPS
+            self.cleanup_dead_sprites()
+            self._cleanup_timer = 0
+
+    def update_messages(self) -> None:
+        """Update floating messages with memory management"""
         # Update each message
         for i in range(len(self.xp_messages) - 1, -1, -1):
             message = self.xp_messages[i]
@@ -238,27 +279,57 @@ class Level:
             if message['duration'] <= 0:
                 self.xp_messages.pop(i)
 
-    def update_camera(self, screen_width=SCREEN_WIDTH, screen_height=SCREEN_HEIGHT):
+        # Memory management: limit the number of messages to prevent memory leaks
+        if len(self.xp_messages) > MAX_XP_MESSAGES:
+            # Remove oldest messages (from the beginning of the list)
+            self.xp_messages = self.xp_messages[-MAX_XP_MESSAGES:]
+            logger.debug(f"Trimmed XP messages to {MAX_XP_MESSAGES} to prevent memory leak")
+
+    def update_camera(self, screen_width: int = SCREEN_WIDTH, screen_height: int = SCREEN_HEIGHT) -> None:
         """Update camera position to center on player"""
+        if not self.player:
+            return
+
+        old_offset_x = self.camera_offset_x
+        old_offset_y = self.camera_offset_y
+
         self.camera_offset_x = self.player.rect.centerx - screen_width // 2
         self.camera_offset_y = self.player.rect.centery - screen_height // 2
 
         # Clamp camera to level boundaries, but handle cases where screen is larger than level
-        level_pixel_width = self.generator.width * TILE_SIZE
-        level_pixel_height = self.generator.height * TILE_SIZE
+        if self.generator:
+            level_pixel_width = self.generator.width * TILE_SIZE
+            level_pixel_height = self.generator.height * TILE_SIZE
 
-        # Only clamp if the level is larger than the screen
-        if level_pixel_width > screen_width:
-            self.camera_offset_x = max(0, min(self.camera_offset_x, level_pixel_width - screen_width))
-        else:
-            # Center the level on screen if level is smaller than screen
-            self.camera_offset_x = -(screen_width - level_pixel_width) // 2
+            # Only clamp if the level is larger than the screen
+            if level_pixel_width > screen_width:
+                self.camera_offset_x = max(0, min(self.camera_offset_x, level_pixel_width - screen_width))
+            else:
+                # Center the level on screen if level is smaller than screen
+                self.camera_offset_x = -(screen_width - level_pixel_width) // 2
 
-        if level_pixel_height > screen_height:
-            self.camera_offset_y = max(0, min(self.camera_offset_y, level_pixel_height - screen_height))
-        else:
-            # Center the level on screen if level is smaller than screen
-            self.camera_offset_y = -(screen_height - level_pixel_height) // 2
+            if level_pixel_height > screen_height:
+                self.camera_offset_y = max(0, min(self.camera_offset_y, level_pixel_height - screen_height))
+            else:
+                # Center the level on screen if level is smaller than screen
+                self.camera_offset_y = -(screen_height - level_pixel_height) // 2
+
+        # Mark cache as dirty if camera moved
+        if (old_offset_x != self.camera_offset_x or old_offset_y != self.camera_offset_y):
+            self._cache_dirty = True
+
+    def _update_visible_sprites_cache(self, screen_width: int, screen_height: int) -> None:
+        """Update the cache of visible sprites for optimized rendering"""
+        self._visible_sprites_cache.clear()
+
+        for sprite in self.all_sprites:
+            sprite_x = sprite.rect.x - self.camera_offset_x
+            sprite_y = sprite.rect.y - self.camera_offset_y
+
+            # Check if sprite is within visible area (with buffer)
+            if ((-sprite.rect.width - SPRITE_CULLING_BUFFER <= sprite_x <= screen_width + SPRITE_CULLING_BUFFER) and
+                (-sprite.rect.height - SPRITE_CULLING_BUFFER <= sprite_y <= screen_height + SPRITE_CULLING_BUFFER)):
+                self._visible_sprites_cache.append(sprite)
 
     def update_minimap(self):
         """Update player position on minimap without regenerating the whole map"""
@@ -352,8 +423,8 @@ class Level:
         # Generate minimap for the fallback level
         self.generate_minimap(tiles)
 
-    def draw(self, screen, score=0, current_level=1):
-        """Draw the level and all entities"""
+    def draw(self, screen: pygame.Surface, score: int = 0, current_level: int = 1) -> None:
+        """Draw the level and all entities with optimized sprite culling"""
         # Get current screen dimensions
         screen_width, screen_height = screen.get_size()
 
@@ -363,37 +434,54 @@ class Level:
         # Draw a subtle background pattern to fill empty areas
         self._draw_background_pattern(screen, screen_width, screen_height)
 
-        # Draw all sprites with camera offset
-        for sprite in self.all_sprites:
-            # Only draw sprites that are within the visible area (optimization)
+        # Update visible sprites cache if camera moved or cache is dirty
+        current_camera_pos = (self.camera_offset_x, self.camera_offset_y)
+        if self._cache_dirty or current_camera_pos != self._last_camera_pos:
+            self._update_visible_sprites_cache(screen_width, screen_height)
+            self._last_camera_pos = current_camera_pos
+            self._cache_dirty = False
+
+        # Draw visible sprites with camera offset (optimized)
+        for sprite in self._visible_sprites_cache:
             sprite_x = sprite.rect.x - self.camera_offset_x
             sprite_y = sprite.rect.y - self.camera_offset_y
+            screen.blit(sprite.image, (sprite_x, sprite_y))
 
-            if (-sprite.rect.width <= sprite_x <= screen_width and
-                -sprite.rect.height <= sprite_y <= screen_height):
-                screen.blit(sprite.image, (sprite_x, sprite_y))
-
-        # Draw projectiles with trails and camera offset
+        # Draw projectiles with trails and camera offset (with culling)
         for projectile in self.projectiles:
-            if hasattr(projectile, 'draw'):
-                projectile.draw(screen, self.camera_offset_x, self.camera_offset_y)
-            else:
-                # Fallback for projectiles without custom draw method
-                screen.blit(projectile.image, (projectile.rect.x - self.camera_offset_x, projectile.rect.y - self.camera_offset_y))
+            # Quick visibility check for projectiles
+            proj_x = projectile.rect.x - self.camera_offset_x
+            proj_y = projectile.rect.y - self.camera_offset_y
 
-        # Draw health bars for entities
+            if (-projectile.rect.width <= proj_x <= screen_width and
+                -projectile.rect.height <= proj_y <= screen_height):
+                if hasattr(projectile, 'draw'):
+                    projectile.draw(screen, self.camera_offset_x, self.camera_offset_y)
+                else:
+                    # Fallback for projectiles without custom draw method
+                    screen.blit(projectile.image, (proj_x, proj_y))
+
+        # Draw health bars for visible enemies only
         for enemy in self.enemies:
-            enemy.draw_health_bar(screen, self.camera_offset_x, self.camera_offset_y)
+            enemy_x = enemy.rect.x - self.camera_offset_x
+            enemy_y = enemy.rect.y - self.camera_offset_y
 
-        # Draw XP messages
-        font = pygame.font.SysFont(None, 20)
-        for message in self.xp_messages:
-            text_surface = font.render(message['text'], True, message['color'])
-            text_rect = text_surface.get_rect(center=(
-                message['x'] - self.camera_offset_x,
-                message['y'] - self.camera_offset_y
-            ))
-            screen.blit(text_surface, text_rect)
+            if (-enemy.rect.width <= enemy_x <= screen_width and
+                -enemy.rect.height <= enemy_y <= screen_height):
+                enemy.draw_health_bar(screen, self.camera_offset_x, self.camera_offset_y)
+
+        # Draw XP messages (with culling and memory management)
+        if self.xp_messages:  # Only create font if we have messages
+            font = pygame.font.SysFont(None, 20)
+            for message in self.xp_messages:
+                msg_x = message['x'] - self.camera_offset_x
+                msg_y = message['y'] - self.camera_offset_y
+
+                # Only render messages that are visible on screen
+                if (-50 <= msg_x <= screen_width + 50 and -50 <= msg_y <= screen_height + 50):
+                    text_surface = font.render(message['text'], True, message['color'])
+                    text_rect = text_surface.get_rect(center=(msg_x, msg_y))
+                    screen.blit(text_surface, text_rect)
 
         # Draw player health bar at fixed position on screen
         pygame.draw.rect(screen, RED, (10, 10, 200, 20))
@@ -413,27 +501,19 @@ class Level:
         level_text = font.render(f"Level: {current_level}", True, WHITE)
         screen.blit(level_text, (screen_width - 150, 40))
 
-        # Draw player level and XP
+        # Draw player level (positioned below XP bar to avoid overlap)
         player_level_text = font.render(f"Player Lv: {self.player.level}", True, CYAN)
-        screen.blit(player_level_text, (10, 40))
+        screen.blit(player_level_text, (10, 65))
 
-        # XP bar
-        xp_bar_width = 200
-        pygame.draw.rect(screen, GRAY, (10, 70, xp_bar_width, 10))
-        xp_width = int(xp_bar_width * (self.player.xp / self.player.xp_to_next_level))
-        pygame.draw.rect(screen, CYAN, (10, 70, xp_width, 10))
-
-        # XP text
-        xp_text = font.render(f"XP: {self.player.xp}/{self.player.xp_to_next_level}", True, CYAN)
-        screen.blit(xp_text, (15, 85))
+        # Note: XP bar is now handled by XPProgressBar in game.py to avoid duplication
 
         # Draw upgrade points if available
         if self.player.upgrade_points > 0:
             upgrade_text = font.render(f"Upgrade Points: {self.player.upgrade_points}", True, YELLOW)
             screen.blit(upgrade_text, (screen_width // 2 - 100, 12))
 
-        # Draw special effect indicators
-        effect_y = 110
+        # Draw special effect indicators (positioned below player level)
+        effect_y = 90
         if hasattr(self.player, 'shield_health') and self.player.shield_health > 0:
             shield_text = font.render(f"Shield: {self.player.shield_health}", True, CYAN)
             screen.blit(shield_text, (10, effect_y))
@@ -482,10 +562,15 @@ class Level:
             collected_items = pygame.sprite.spritecollide(self.player, self.items, False)
 
         # Process collected items
+        items_to_remove = []
         for item in collected_items:
-            if item.collect(self.player) and game:
-                # Add score for collecting an item
-                game.score += ITEM_COLLECT_SCORE
+            if item.collect(self.player):
+                # Mark item for removal
+                items_to_remove.append(item)
+
+                if game:
+                    # Add score for collecting an item
+                    game.score += ITEM_COLLECT_SCORE
 
                 # Add floating message
                 self.add_floating_text(f"Collected {item.name}", item.rect.centerx, item.rect.centery, GREEN)
@@ -493,6 +578,17 @@ class Level:
                 # Play item collection sound
                 if self.audio_manager:
                     self.audio_manager.play_sound('item_collect')
+
+        # Remove collected items from all sprite groups and invalidate cache
+        if items_to_remove:
+            for item in items_to_remove:
+                # Ensure item is removed from all groups
+                item.remove(self.items, self.all_sprites)
+                # Alternative: item.kill() should also work but let's be explicit
+
+            # Mark sprite cache as dirty since we removed sprites
+            self._cache_dirty = True
+            logger.debug(f"Removed {len(items_to_remove)} collected items from sprite groups")
 
     def generate_minimap(self, tiles):
         """Generate a minimap from the level tiles"""
@@ -573,3 +669,84 @@ class Level:
             screen_y = y - self.camera_offset_y
             if 0 <= screen_y <= screen_height:
                 pygame.draw.line(screen, grid_color, (0, screen_y), (screen_width, screen_y))
+
+    def _check_equipment_drop(self, enemy, x: int, y: int) -> None:
+        """Check if an enemy should drop equipment and create it"""
+        import random
+
+        # Higher drop chance for bosses
+        drop_chance = EQUIPMENT_DROP_CHANCE
+        if hasattr(enemy, 'is_boss') and enemy.is_boss:
+            drop_chance *= 3.0  # 3x higher chance for bosses
+
+        # Apply lucky find skill bonus
+        lucky_find_bonus = self.player.skill_tree.get_total_bonus("drop_bonus")
+        drop_chance *= (1.0 + lucky_find_bonus)
+
+        if random.random() < drop_chance:
+            # Generate random equipment
+            equipment_type = random.choice(["weapon", "armor", "accessory"])
+            equipment = self.player.equipment_manager.generate_random_equipment(
+                equipment_type, self.player.level
+            )
+
+            # Create equipment item and add to level
+            from entities.item import EquipmentItem
+            equipment_item = EquipmentItem(x, y, equipment)
+            self.items.add(equipment_item)
+            self.all_sprites.add(equipment_item)
+
+            # Mark cache as dirty since we added a new sprite
+            self._cache_dirty = True
+
+    def _update_visible_sprites_cache(self, screen_width: int, screen_height: int) -> None:
+        """Update the cache of visible sprites for optimized rendering"""
+        self._visible_sprites_cache.clear()
+
+        # Calculate visible area with some padding for smooth scrolling
+        padding = SPRITE_CACHE_PADDING  # Extra pixels around screen edges
+        left_bound = self.camera_offset_x - padding
+        right_bound = self.camera_offset_x + screen_width + padding
+        top_bound = self.camera_offset_y - padding
+        bottom_bound = self.camera_offset_y + screen_height + padding
+
+        # Check each sprite for visibility
+        for sprite in self.all_sprites:
+            sprite_right = sprite.rect.x + sprite.rect.width
+            sprite_bottom = sprite.rect.y + sprite.rect.height
+
+            # Check if sprite overlaps with visible area
+            if (sprite.rect.x < right_bound and sprite_right > left_bound and
+                sprite.rect.y < bottom_bound and sprite_bottom > top_bound):
+                self._visible_sprites_cache.append(sprite)
+
+        logger.debug(f"Updated sprite cache: {len(self._visible_sprites_cache)}/{len(self.all_sprites)} sprites visible")
+
+    def invalidate_sprite_cache(self) -> None:
+        """Mark the sprite cache as dirty to force a refresh"""
+        self._cache_dirty = True
+
+    def cleanup_dead_sprites(self) -> None:
+        """Remove any dead sprites that might still be in groups"""
+        # Check for dead enemies
+        dead_enemies = [enemy for enemy in self.enemies if enemy.health <= 0]
+        for enemy in dead_enemies:
+            enemy.remove(self.enemies, self.all_sprites)
+            logger.debug(f"Cleaned up dead enemy at {enemy.rect.center}")
+
+        # Check for dead projectiles (those that have been killed but might still be in groups)
+        dead_projectiles = []
+        for projectile in self.projectiles:
+            # Check if projectile is outside level bounds (simple cleanup)
+            if (projectile.rect.x < -100 or projectile.rect.x > (self.generator.width * TILE_SIZE + 100) or
+                projectile.rect.y < -100 or projectile.rect.y > (self.generator.height * TILE_SIZE + 100)):
+                dead_projectiles.append(projectile)
+
+        for projectile in dead_projectiles:
+            projectile.remove(self.projectiles, self.all_sprites)
+            logger.debug(f"Cleaned up out-of-bounds projectile at {projectile.rect.center}")
+
+        # Mark cache as dirty if we removed any sprites
+        if dead_enemies or dead_projectiles:
+            self._cache_dirty = True
+            logger.debug(f"Cleaned up {len(dead_enemies)} enemies and {len(dead_projectiles)} projectiles")

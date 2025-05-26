@@ -44,10 +44,14 @@ class Enemy(Entity):
             self.speed += 1
             self.health *= 0.7
             self.damage *= 0.8
+            self.xp_reward = int(XP_PER_ENEMY_FAST * (XP_DIFFICULTY_MULTIPLIER ** (difficulty_level - 1)))
         elif self.enemy_type == "tank":
             self.speed -= 0.5
             self.health *= 1.5
             self.damage *= 1.2
+            self.xp_reward = int(XP_PER_ENEMY_TANK * (XP_DIFFICULTY_MULTIPLIER ** (difficulty_level - 1)))
+        else:  # normal
+            self.xp_reward = int(XP_PER_ENEMY_BASE * (XP_DIFFICULTY_MULTIPLIER ** (difficulty_level - 1)))
 
         # Create a smaller collision rectangle for better movement
         self.collision_rect = self.rect.inflate(-4, -4)

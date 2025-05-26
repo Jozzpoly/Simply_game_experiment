@@ -62,8 +62,26 @@ INVINCIBILITY_DURATION = 180  # frames (3 seconds)
 ENEMY_KILL_SCORE = 100
 ITEM_COLLECT_SCORE = 50
 LEVEL_COMPLETE_SCORE = 500
-XP_PER_ENEMY = 10
+
+# XP System - Enhanced with enemy type variations
+XP_PER_ENEMY_BASE = 10
+XP_PER_ENEMY_FAST = 8   # Fast enemies give less XP (easier to kill)
+XP_PER_ENEMY_TANK = 15  # Tank enemies give more XP (harder to kill)
+XP_PER_BOSS = 50        # Boss enemies give significant XP
 XP_PER_LEVEL = 50
+XP_DIFFICULTY_MULTIPLIER = 1.2  # XP multiplier per difficulty level
+
+# Skill Tree System
+SKILL_POINTS_PER_LEVEL = 1
+MAX_SKILL_LEVEL = 5
+
+# Equipment System
+EQUIPMENT_DROP_CHANCE = 0.15  # 15% chance for equipment drop
+EQUIPMENT_UPGRADE_COST_BASE = 100  # Base cost to upgrade equipment
+EQUIPMENT_RARITY_WEIGHTS = [0.6, 0.25, 0.12, 0.03]  # Common, Uncommon, Rare, Epic
+
+# Achievement System
+ACHIEVEMENT_XP_BONUS = 25
 
 # Level generation
 LEVEL_WIDTH = 60  # in tiles (increased for fullscreen support)
@@ -85,12 +103,78 @@ BOSS_SPAWN_LEVEL = 5         # Level interval for boss spawns
 PATHFINDING_MAX_DISTANCE = 200  # Maximum distance for pathfinding in pixels
 RANDOM_MOVE_CHANCE = 0.02  # Chance to change direction during random movement
 
-# Player upgrade system
+# Player upgrade system - Enhanced
 UPGRADE_POINTS_PER_LEVEL = 1
 MAX_HEALTH_UPGRADE = 20  # Health increase per upgrade
 MAX_DAMAGE_UPGRADE = 5   # Damage increase per upgrade
 MAX_SPEED_UPGRADE = 0.5  # Speed increase per upgrade
 FIRE_RATE_UPGRADE = 50   # Fire rate reduction per upgrade (milliseconds)
+
+# Skill Tree Categories
+SKILL_CATEGORIES = ["combat", "survival", "utility"]
+
+# Combat Skills
+COMBAT_SKILLS = {
+    "critical_strike": {"max_level": 5, "base_chance": 0.05, "chance_per_level": 0.03},
+    "multi_shot": {"max_level": 3, "projectiles_per_level": 1},
+    "piercing_shots": {"max_level": 3, "pierce_count_per_level": 1},
+    "explosive_shots": {"max_level": 3, "explosion_radius_per_level": 20},
+    "weapon_mastery": {"max_level": 5, "damage_bonus_per_level": 0.1}
+}
+
+# Survival Skills
+SURVIVAL_SKILLS = {
+    "armor_mastery": {"max_level": 5, "damage_reduction_per_level": 0.05},
+    "health_regeneration": {"max_level": 3, "regen_per_level": 1, "regen_interval": 180},
+    "shield_mastery": {"max_level": 3, "shield_bonus_per_level": 0.2},
+    "damage_resistance": {"max_level": 5, "resistance_per_level": 0.03},
+    "second_wind": {"max_level": 1, "health_threshold": 0.25, "heal_amount": 0.5}
+}
+
+# Utility Skills
+UTILITY_SKILLS = {
+    "movement_mastery": {"max_level": 5, "speed_bonus_per_level": 0.1},
+    "resource_efficiency": {"max_level": 3, "xp_bonus_per_level": 0.15},
+    "item_magnetism": {"max_level": 3, "range_per_level": 50},
+    "detection": {"max_level": 3, "range_bonus_per_level": 100},
+    "lucky_find": {"max_level": 3, "drop_chance_bonus_per_level": 0.05}
+}
+
+# Equipment Rarities and Stats
+EQUIPMENT_RARITIES = ["Common", "Uncommon", "Rare", "Epic"]
+EQUIPMENT_RARITY_COLORS = {
+    "Common": (200, 200, 200),      # Light Gray
+    "Uncommon": (0, 255, 0),        # Green
+    "Rare": (0, 100, 255),          # Blue
+    "Epic": (128, 0, 128)           # Purple
+}
+
+# Equipment Types
+EQUIPMENT_TYPES = ["weapon", "armor", "accessory"]
+
+# Weapon Stats
+WEAPON_BASE_STATS = {
+    "damage_bonus": 0,
+    "fire_rate_bonus": 0,
+    "critical_chance": 0,
+    "projectile_speed": 0
+}
+
+# Armor Stats
+ARMOR_BASE_STATS = {
+    "health_bonus": 0,
+    "damage_reduction": 0,
+    "speed_bonus": 0,
+    "regeneration": 0
+}
+
+# Accessory Stats
+ACCESSORY_BASE_STATS = {
+    "xp_bonus": 0,
+    "item_find": 0,
+    "skill_cooldown": 0,
+    "resource_bonus": 0
+}
 
 # Asset paths
 PLAYER_IMG = "assets/images/player.png"
@@ -118,3 +202,17 @@ LEVEL_UP_SOUND = "assets/sounds/level_up.wav"
 PLAYER_HURT_SOUND = "assets/sounds/player_hurt.wav"
 BACKGROUND_MUSIC = "assets/sounds/background_music.ogg"
 MENU_MUSIC = "assets/sounds/menu_music.ogg"
+
+# UI Constants for improved consistency
+PAUSE_OVERLAY_ALPHA = 128
+PAUSE_TITLE_FONT_SIZE = 72
+PAUSE_INSTRUCTION_FONT_SIZE = 36
+
+# Performance and Memory Management
+MAX_XP_MESSAGES = 50  # Maximum floating XP messages to prevent memory leaks
+SPRITE_CACHE_PADDING = 100  # Padding around screen for sprite culling
+VISIBLE_SPRITE_LOG_THRESHOLD = 100  # Log sprite count when above this threshold
+SPRITE_CULLING_BUFFER = 64  # Buffer pixels for sprite culling
+
+# Rendering optimization
+VISIBLE_SPRITE_CACHE_ENABLED = True  # Enable sprite culling cache

@@ -87,6 +87,7 @@ class Projectile(pygame.sprite.Sprite):
                 if enemy_died and game:
                     game.score += ENEMY_KILL_SCORE
                     self.killed_enemy = True  # Set flag for XP gain
+                    self.killed_enemy_ref = hit_enemy  # Store reference to killed enemy
 
                     # Add explosion effect for enemy death
                     if hasattr(game, 'level') and hasattr(game.level, 'visual_effects'):
