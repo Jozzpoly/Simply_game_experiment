@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from entities.player import Player
 from utils.constants import *
+from config import PLAYER_BASE_SPEED
 
 class TestPlayer(unittest.TestCase):
     """Test cases for the Player class"""
@@ -65,7 +66,7 @@ class TestPlayer(unittest.TestCase):
         self.assertEqual(self.player.health, PLAYER_HEALTH)
         self.assertEqual(self.player.max_health, PLAYER_HEALTH)
         self.assertEqual(self.player.damage, PLAYER_DAMAGE)
-        self.assertEqual(self.player.speed, PLAYER_SPEED)
+        self.assertEqual(self.player.speed, PLAYER_BASE_SPEED)
         self.assertEqual(self.player.fire_rate, PLAYER_FIRE_RATE)
 
     def test_add_xp_no_level_up(self):

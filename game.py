@@ -1,11 +1,11 @@
 import pygame
 import sys
 import logging
-from typing import Optional, Tuple, TYPE_CHECKING
+from typing import Optional, Tuple, List, TYPE_CHECKING
 from level.level import Level
 from ui.ui_elements import GameOverScreen, StartScreen, UpgradeScreen, SkillNotification
 from utils.constants import *
-from config import ZOOM_SENSITIVITY
+from config import ZOOM_SENSITIVITY, PLAYER_BASE_SPEED
 from utils.save_manager import SaveManager
 from utils.audio_manager import AudioManager
 
@@ -46,6 +46,12 @@ class Game:
         self.running: bool = True
         self.state: GameState = GameState.START
         self.paused: bool = False
+
+        # FPS monitoring
+        self.fps_counter: int = 0
+        self.fps_timer: int = 0
+        self.current_fps: float = 0.0
+        self.fps_samples: List[float] = []
 
         # Level (will be initialized after audio manager)
         self.level: Optional[Level] = None
@@ -109,8 +115,13 @@ class Game:
             logger.info(f"Toggling fullscreen mode: {self.is_fullscreen}")
 
             if self.is_fullscreen:
-                # Switch to fullscreen
-                self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+                # Get desktop resolution for fullscreen
+                info = pygame.display.Info()
+                desktop_width = info.current_w
+                desktop_height = info.current_h
+
+                # Switch to fullscreen with desktop resolution
+                self.screen = pygame.display.set_mode((desktop_width, desktop_height), pygame.FULLSCREEN)
             else:
                 # Switch to windowed mode
                 self.screen = pygame.display.set_mode(self.windowed_size)
@@ -190,6 +201,9 @@ class Game:
                 # Draw
                 self.draw()
 
+                # FPS monitoring
+                self._update_fps_counter()
+
                 # Cap the frame rate
                 self.clock.tick(FPS)
 
@@ -225,7 +239,7 @@ class Game:
                 self.start_new_game()
             # Check for next level button click
             elif self.victory and self.game_over_screen.check_next_level(event):
-                self.next_level()
+                self.advance_to_next_level()
         elif self.state == GameState.UPGRADE:
             # Handle upgrade button clicks
             if self.level and self.level.player:
@@ -278,6 +292,30 @@ class Game:
                 # Open upgrade screen
                 self.state = GameState.UPGRADE
                 self.upgrade_screen.update_stats(self.level.player)
+        elif event.key == pygame.K_i:
+            # I key to open inventory/equipment screen
+            if self.state == GameState.PLAYING and self.level and self.level.player:
+                self.state = GameState.UPGRADE
+                self.upgrade_screen.update_stats(self.level.player)
+                self.upgrade_screen.current_tab = "equipment"
+        elif event.key == pygame.K_k:
+            # K key to open skills screen
+            if self.state == GameState.PLAYING and self.level and self.level.player:
+                self.state = GameState.UPGRADE
+                self.upgrade_screen.update_stats(self.level.player)
+                self.upgrade_screen.current_tab = "skills"
+        elif event.key == pygame.K_o:
+            # O key to open achievements screen
+            if self.state == GameState.PLAYING and self.level and self.level.player:
+                self.state = GameState.UPGRADE
+                self.upgrade_screen.update_stats(self.level.player)
+                self.upgrade_screen.current_tab = "achievements"
+        elif event.key == pygame.K_c:
+            # C key to open character stats screen
+            if self.state == GameState.PLAYING and self.level and self.level.player:
+                self.state = GameState.UPGRADE
+                self.upgrade_screen.update_stats(self.level.player)
+                self.upgrade_screen.current_tab = "detailed"
         elif event.key == pygame.K_p:
             # P key to pause/unpause
             if self.state == GameState.PLAYING:
@@ -327,18 +365,9 @@ class Game:
                 self.victory = False
                 logger.info("Player died - game over")
 
-            # Check for victory (all enemies defeated)
-            if len(self.level.enemies) == 0:
-                self.state = GameState.GAME_OVER
-                self.victory = True
-                # Add bonus score for completing the level
-                self.score += LEVEL_COMPLETE_SCORE
-                # Add XP for completing the level
-                if self.level.player:
-                    self.level.player.add_xp(XP_PER_LEVEL)
-                # Save the game state when completing a level
-                self.save_game()
-                logger.info(f"Level {self.current_level} completed!")
+            # Check for victory (stairs interaction handled in level.check_stairs_interaction)
+            # The old win condition (all enemies defeated) is now replaced by stairs interaction
+            # Victory is now triggered by the stairs interaction in level.py
 
             # Check if player leveled up and has upgrade points or skill points
             if (self.level.player and self.level.player_level_up and
@@ -411,6 +440,9 @@ class Game:
             # Draw upgrade screen
             self.upgrade_screen.draw(self.screen)
 
+        # Draw FPS counter in top-left corner
+        self._draw_fps_counter()
+
         # Update display
         pygame.display.flip()
 
@@ -433,12 +465,14 @@ class Game:
         instructions = [
             "Press P or ESC to resume",
             "Press F11 for fullscreen",
-            "Press U for upgrades (if available)"
+            "Press U for upgrades (if available)",
+            "Press I for inventory, K for skills",
+            "Press O for achievements, C for stats"
         ]
 
         for i, instruction in enumerate(instructions):
             text = font_small.render(instruction, True, WHITE)
-            text_rect = text.get_rect(center=(self.screen.get_width() // 2, self.screen.get_height() // 2 + 20 + i * 40))
+            text_rect = text.get_rect(center=(self.screen.get_width() // 2, self.screen.get_height() // 2 + 20 + i * 35))
             self.screen.blit(text, text_rect)
 
     def start_new_game(self) -> None:
@@ -488,7 +522,7 @@ class Game:
                         temp_player.health = player_data.get("health", PLAYER_HEALTH)
                         temp_player.max_health = player_data.get("max_health", PLAYER_HEALTH)
                         temp_player.damage = player_data.get("damage", PLAYER_DAMAGE)
-                        temp_player.speed = player_data.get("speed", PLAYER_SPEED)
+                        temp_player.speed = player_data.get("speed", PLAYER_BASE_SPEED)
                         temp_player.fire_rate = player_data.get("fire_rate", PLAYER_FIRE_RATE)
                         temp_player.level = player_data.get("level", 1)  # This is the player level (integer)
                         temp_player.xp = player_data.get("xp", 0)
@@ -526,7 +560,30 @@ class Game:
             self.start_new_game()
 
     def next_level(self) -> None:
-        """Advance to the next level with proper error handling"""
+        """Complete current level and show victory screen (called by stairs interaction)"""
+        try:
+            # Add level completion rewards before advancing
+            if self.level and self.level.player:
+                # Add bonus score for completing the level
+                self.score += LEVEL_COMPLETE_SCORE
+                # Add XP for completing the level
+                self.level.player.add_xp(XP_PER_LEVEL)
+                logger.info(f"Level {self.current_level} completed!")
+
+            # Set victory state for UI
+            self.state = GameState.GAME_OVER
+            self.victory = True
+
+            # Save the game state when completing a level
+            self.save_game()
+
+        except Exception as e:
+            logger.error(f"Failed to complete level: {e}")
+            # Stay on current level
+            self.state = GameState.PLAYING
+
+    def advance_to_next_level(self) -> None:
+        """Actually advance to the next level (called by next level button)"""
         try:
             self.state = GameState.PLAYING
             self.current_level += 1
@@ -583,3 +640,40 @@ class Game:
 
         except Exception as e:
             logger.error(f"Failed to save game: {e}")
+
+    def _update_fps_counter(self) -> None:
+        """Update FPS counter and log average FPS periodically"""
+        self.fps_counter += 1
+        self.fps_timer += 1
+
+        # Calculate current FPS
+        self.current_fps = self.clock.get_fps()
+        self.fps_samples.append(self.current_fps)
+
+        # Log average FPS every 5 seconds (300 frames at 60 FPS)
+        if self.fps_timer >= 300:
+            if self.fps_samples:
+                avg_fps = sum(self.fps_samples) / len(self.fps_samples)
+                min_fps = min(self.fps_samples)
+                max_fps = max(self.fps_samples)
+                logger.info(f"FPS Stats - Avg: {avg_fps:.1f}, Min: {min_fps:.1f}, Max: {max_fps:.1f}")
+
+                # Keep only recent samples to prevent memory buildup
+                self.fps_samples = self.fps_samples[-60:]  # Keep last 60 samples
+
+            self.fps_timer = 0
+
+    def _draw_fps_counter(self) -> None:
+        """Draw FPS counter in top-left corner"""
+        if self.current_fps > 0:
+            # Color code FPS: Green > 50, Yellow 30-50, Red < 30
+            if self.current_fps >= 50:
+                color = GREEN
+            elif self.current_fps >= 30:
+                color = YELLOW
+            else:
+                color = RED
+
+            font = pygame.font.SysFont(None, 24)
+            fps_text = font.render(f"FPS: {self.current_fps:.1f}", True, color)
+            self.screen.blit(fps_text, (10, 10))

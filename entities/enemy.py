@@ -5,6 +5,7 @@ from entities.entity import Entity
 from entities.projectile import Projectile
 from utils.animation_system import EnhancedSpriteAnimator
 from utils.constants import *
+from config import ENEMY_BASE_SPEED, ENEMY_SPEED_MULTIPLIERS
 
 class Enemy(Entity):
     """Enemy character class with improved AI behavior and pathfinding"""
@@ -15,7 +16,7 @@ class Enemy(Entity):
         damage = ENEMY_DAMAGE + int((difficulty_level - 1) * (1.15 ** (difficulty_level - 1)))
 
         super().__init__(x, y, ENEMY_IMG, health)
-        self.speed = ENEMY_SPEED
+        self.speed = ENEMY_BASE_SPEED
         self.fire_rate = ENEMY_FIRE_RATE
         self.damage = damage
         self.detection_radius = 300  # Pixels
@@ -72,6 +73,12 @@ class Enemy(Entity):
 
         # Create a smaller collision rectangle for better movement
         self.collision_rect = self.rect.inflate(-4, -4)
+
+        # Performance optimization attributes
+        self.ai_enabled = True  # Can be disabled for distant enemies
+        self.visible = True     # Can be hidden for very distant enemies
+        self.simplified_ai = False  # Use simplified AI for distant enemies
+        self.last_optimization_check = 0
 
         # Visual differentiation based on enemy type
         self.base_color = self._get_enemy_color()
@@ -161,12 +168,21 @@ class Enemy(Entity):
         }
         return color_map.get(self.enemy_type, (255, 100, 100))
 
-    def update(self, player, walls, projectiles_group):
-        """Update enemy based on improved AI behavior"""
+    def update(self, player, walls, projectiles_group, systems_manager=None):
+        """Update enemy based on improved AI behavior with performance optimization"""
+        # Check if AI is disabled for performance optimization
+        if not self.ai_enabled:
+            return
+
         # Calculate distance to player
         player_pos = pygame.math.Vector2(player.rect.center)
         enemy_pos = pygame.math.Vector2(self.rect.center)
         distance_to_player = player_pos.distance_to(enemy_pos)
+
+        # Use simplified AI for distant enemies if performance optimization is enabled
+        if self.simplified_ai:
+            self._update_simplified_ai(player, walls, distance_to_player)
+            return
 
         # Optimize visibility checks - only check periodically
         self.visibility_check_timer += 1
@@ -286,6 +302,29 @@ class Enemy(Entity):
 
         # Update sprite image from animation
         self.image = self.animator.get_current_surface()
+
+    def _update_simplified_ai(self, player, walls, distance_to_player: float) -> None:
+        """Simplified AI update for distant enemies to improve performance"""
+        # Very basic behavior - just move towards player occasionally
+        if distance_to_player <= self.detection_radius * 1.5:
+            # Simple movement towards player
+            player_pos = pygame.math.Vector2(player.rect.center)
+            enemy_pos = pygame.math.Vector2(self.rect.center)
+
+            direction = player_pos - enemy_pos
+            if direction.length() > 0:
+                direction.normalize_ip()
+                self.velocity = direction * (self.speed * 0.5)  # Slower movement
+
+            # Simple movement with basic collision
+            self.move(self.velocity.x, self.velocity.y, walls)
+        else:
+            # Stay idle if too far
+            self.velocity = pygame.math.Vector2(0, 0)
+
+        # Update collision rectangle
+        if hasattr(self, 'collision_rect'):
+            self.collision_rect.center = self.rect.center
 
     def _choose_random_direction(self):
         """Choose a random direction for movement"""

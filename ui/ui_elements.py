@@ -268,15 +268,17 @@ class StartScreen:
         instructions = [
             "WASD or Arrow Keys to move",
             "Mouse or Space to shoot",
-            "U key to open upgrade menu",
+            "U for upgrades, I for inventory",
+            "K for skills, O for achievements",
+            "C for character stats, P to pause",
             "F11 or Alt+Enter for fullscreen",
             "ESC to exit fullscreen",
-            "Defeat all enemies to win!"
+            "Find stairs to advance levels!"
         ]
 
         for i, instruction in enumerate(instructions):
             text_surface = self.font_small.render(instruction, True, WHITE)
-            text_rect = text_surface.get_rect(center=(self.width // 2, self.height // 2 - 30 + i * 30))
+            text_rect = text_surface.get_rect(center=(self.width // 2, self.height // 2 - 60 + i * 25))
             surface.blit(text_surface, text_rect)
 
         # Draw play button

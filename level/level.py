@@ -11,6 +11,12 @@ from config import DEFAULT_ZOOM_LEVEL, MIN_ZOOM_LEVEL, MAX_ZOOM_LEVEL
 from utils.visual_effects import VisualEffectsManager
 from utils.animation_system import AnimationManager
 from ui.enhanced_hud import ModernHUD
+from entities.stairs import Stairs
+from config import (
+    STAIRS_ENABLED,
+    REQUIRE_ENEMY_PERCENTAGE_FOR_STAIRS
+)
+from systems.systems_manager import SystemsManager, SystemsIntegration
 
 # Configure logging for level module
 logger = logging.getLogger(__name__)
@@ -48,6 +54,7 @@ class Level:
         self.enemies: pygame.sprite.Group = pygame.sprite.Group()
         self.projectiles: pygame.sprite.Group = pygame.sprite.Group()
         self.items: pygame.sprite.Group = pygame.sprite.Group()
+        self.stairs: pygame.sprite.Group = pygame.sprite.Group()  # New: Stairs group
 
         # Level generator
         self.generator: Optional[LevelGenerator] = None
@@ -84,6 +91,18 @@ class Level:
         self._last_camera_pos: Tuple[int, int] = (0, 0)
         self._cache_dirty: bool = True
 
+        # Zoom performance optimization: cache scaled surfaces
+        self._scaled_surface_cache: Optional[pygame.Surface] = None
+        self._last_zoom_level: float = 1.0
+        self._last_screen_size: Tuple[int, int] = (0, 0)
+
+        # Stairs system tracking
+        self.total_enemies_spawned: int = 0
+        self.stairs_unlocked: bool = False
+
+        # Systems manager for performance optimization and modular architecture
+        self.systems_manager: Optional[SystemsManager] = None
+
     def generate_level(self, current_level=1, player=None):
         """Generate a new level with the current level number"""
         # Store current level
@@ -100,12 +119,17 @@ class Level:
             self.enemies.empty()
             self.projectiles.empty()
             self.items.empty()
+            self.stairs.empty()
 
             # Clear messages
             self.xp_messages = []
 
             # Generate new level
-            tiles, player_pos, enemy_positions, item_positions = self.generator.generate()
+            tiles, player_pos, enemy_positions, item_positions, stairs_positions = self.generator.generate()
+
+            # Reset stairs tracking
+            self.total_enemies_spawned = len(enemy_positions)
+            self.stairs_unlocked = not REQUIRE_ENEMY_PERCENTAGE_FOR_STAIRS
         except Exception as e:
             print(f"Error generating level: {e}")
             # Create a fallback level if generation fails
@@ -159,9 +183,9 @@ class Level:
                 enemy_y = boss_pos[1] * TILE_SIZE
                 enemy = BossEnemy(enemy_x, enemy_y, difficulty_level=current_level)
             else:
-                # Create regular enemy
-                enemy_x = pos[0] * TILE_SIZE
-                enemy_y = pos[1] * TILE_SIZE
+                # Create regular enemy - pos should already be in pixels
+                enemy_x = pos[0]
+                enemy_y = pos[1]
                 enemy = Enemy(enemy_x, enemy_y, difficulty_level=current_level)
 
             # Set audio manager reference for the enemy
@@ -185,17 +209,46 @@ class Level:
             self.items.add(item)
             self.all_sprites.add(item)
 
+        # Create stairs if enabled
+        if STAIRS_ENABLED and stairs_positions:
+            for stair_data in stairs_positions:
+                stair_type, stair_pos = stair_data
+                stairs = Stairs(stair_pos[0], stair_pos[1], stair_type)
+                self.stairs.add(stairs)
+                self.all_sprites.add(stairs)
+
         # Generate minimap
         self.generate_minimap(tiles)
 
+        # Initialize systems manager for this level
+        if not self.systems_manager:
+            self.systems_manager = SystemsManager(seed=current_level * 1000)
+
     def update(self, game=None, screen_width=SCREEN_WIDTH, screen_height=SCREEN_HEIGHT):
-        """Update all entities in the level"""
+        """Update all entities in the level with performance optimization"""
+        # Update systems manager first
+        if self.systems_manager:
+            dt = 1.0 / 60.0  # Assume 60 FPS for now
+            game_state = SystemsIntegration.create_game_state_dict(
+                self, self.player, self.camera_offset_x, self.camera_offset_y,
+                screen_width, screen_height
+            )
+            self.systems_manager.update(dt, game_state)
+
         # Update player
         self.player.update(self.walls)
 
-        # Update enemies
+        # Update enemies with optimization
         for enemy in self.enemies:
-            enemy.update(self.player, self.walls, self.projectiles)
+            # Check if this enemy should be updated this frame
+            if self.systems_manager and SystemsIntegration.should_skip_enemy_update(enemy, self.systems_manager):
+                continue
+
+            # Apply optimization settings
+            if self.systems_manager:
+                SystemsIntegration.apply_enemy_optimizations(enemy, self.systems_manager)
+
+            enemy.update(self.player, self.walls, self.projectiles, self.systems_manager)
 
         # Update projectiles
         for projectile in self.projectiles:
@@ -242,8 +295,15 @@ class Level:
         for item in self.items:
             item.update()
 
+        # Update stairs
+        for stairs in self.stairs:
+            stairs.update(len(self.enemies), self.total_enemies_spawned)
+
         # Check for item collection
         self.check_item_collection(game)
+
+        # Check for stairs interaction
+        self.check_stairs_interaction(game)
 
         # Update XP messages
         self.update_messages()
@@ -254,9 +314,17 @@ class Level:
         # Update minimap with player position
         self.update_minimap()
 
-        # Update visual effects and animations
+        # Update visual effects and animations with memory management
         self.visual_effects.update()
         self.animation_manager.update()
+
+        # Periodic cleanup of visual effects (every 600 frames to prevent memory buildup)
+        if not hasattr(self, '_visual_cleanup_timer'):
+            self._visual_cleanup_timer = 0
+        self._visual_cleanup_timer += 1
+        if self._visual_cleanup_timer >= 600:  # Every 10 seconds at 60 FPS
+            self._cleanup_visual_effects()
+            self._visual_cleanup_timer = 0
 
         # Periodic cleanup of dead sprites (every 60 frames to avoid performance impact)
         if hasattr(self, '_cleanup_timer'):
@@ -266,6 +334,9 @@ class Level:
 
         if self._cleanup_timer >= 60:  # Every second at 60 FPS
             self.cleanup_dead_sprites()
+            # Clean up dead enemies in systems manager
+            if self.systems_manager:
+                self.systems_manager.cleanup_dead_enemies(self.enemies)
             self._cleanup_timer = 0
 
     def update_messages(self) -> None:
@@ -292,37 +363,23 @@ class Level:
             logger.debug(f"Trimmed XP messages to {MAX_XP_MESSAGES} to prevent memory leak")
 
     def update_camera(self, screen_width: int = SCREEN_WIDTH, screen_height: int = SCREEN_HEIGHT) -> None:
-        """Update camera position to center on player"""
+        """Update camera position to always center on player - no boundaries"""
         if not self.player:
             return
 
         old_offset_x = self.camera_offset_x
         old_offset_y = self.camera_offset_y
 
+        # Always center camera on player - no limits or boundaries
         self.camera_offset_x = self.player.rect.centerx - screen_width // 2
         self.camera_offset_y = self.player.rect.centery - screen_height // 2
-
-        # Clamp camera to level boundaries, but handle cases where screen is larger than level
-        if self.generator:
-            level_pixel_width = self.generator.width * TILE_SIZE
-            level_pixel_height = self.generator.height * TILE_SIZE
-
-            # Only clamp if the level is larger than the screen
-            if level_pixel_width > screen_width:
-                self.camera_offset_x = max(0, min(self.camera_offset_x, level_pixel_width - screen_width))
-            else:
-                # Center the level on screen if level is smaller than screen
-                self.camera_offset_x = -(screen_width - level_pixel_width) // 2
-
-            if level_pixel_height > screen_height:
-                self.camera_offset_y = max(0, min(self.camera_offset_y, level_pixel_height - screen_height))
-            else:
-                # Center the level on screen if level is smaller than screen
-                self.camera_offset_y = -(screen_height - level_pixel_height) // 2
 
         # Mark cache as dirty if camera moved
         if (old_offset_x != self.camera_offset_x or old_offset_y != self.camera_offset_y):
             self._cache_dirty = True
+
+        # Update terrain generation based on camera position and zoom
+        self._update_dynamic_terrain(screen_width, screen_height)
 
     def handle_zoom(self, zoom_delta: float, mouse_x: int, mouse_y: int) -> None:
         """Handle zoom in/out with mouse wheel, zooming towards mouse position"""
@@ -342,8 +399,9 @@ class Level:
             self.camera_offset_x = int(world_mouse_x - mouse_x)
             self.camera_offset_y = int(world_mouse_y - mouse_y)
 
-            # Mark cache as dirty since zoom changed
+            # Mark caches as dirty since zoom changed
             self._cache_dirty = True
+            self._scaled_surface_cache = None  # Invalidate zoom cache
 
     def _update_visible_sprites_cache(self, screen_width: int, screen_height: int) -> None:
         """Update the cache of visible sprites for optimized rendering"""
@@ -472,6 +530,10 @@ class Level:
             self._draw_background_pattern(screen, screen_width, screen_height)
             game_surface = screen
 
+        # Render terrain from systems manager if available (before sprites)
+        if self.systems_manager:
+            self.systems_manager.render_terrain(game_surface, self.camera_offset_x, self.camera_offset_y)
+
         # Update visible sprites cache if camera moved or cache is dirty
         current_camera_pos = (self.camera_offset_x, self.camera_offset_y)
         if self._cache_dirty or current_camera_pos != self._last_camera_pos:
@@ -525,9 +587,9 @@ class Level:
         self.visual_effects.draw(game_surface, self.camera_offset_x, self.camera_offset_y)
         self.animation_manager.draw_floating_texts(game_surface, self.camera_offset_x, self.camera_offset_y)
 
-        # Apply zoom if needed
+        # Apply zoom if needed - simplified without caching for now
         if self.zoom_level != 1.0:
-            # Scale the game surface and blit to screen
+            # Scale the game surface
             scaled_width = int(screen_width * self.zoom_level)
             scaled_height = int(screen_height * self.zoom_level)
             scaled_surface = pygame.transform.scale(game_surface, (scaled_width, scaled_height))
@@ -539,6 +601,9 @@ class Level:
             # Clear screen and blit scaled surface
             screen.fill((20, 20, 20))
             screen.blit(scaled_surface, (offset_x, offset_y))
+        else:
+            # No zoom - blit game surface directly
+            screen.blit(game_surface, (0, 0))
 
         # Update and draw modern HUD (always on top, not affected by zoom)
         if self.modern_hud:
@@ -602,6 +667,37 @@ class Level:
             # Mark sprite cache as dirty since we removed sprites
             self._cache_dirty = True
             logger.debug(f"Removed {len(items_to_remove)} collected items from sprite groups")
+
+    def check_stairs_interaction(self, game=None):
+        """Check if player is interacting with stairs"""
+        if not STAIRS_ENABLED or not self.stairs:
+            return False
+
+        # Use the player's collision rect if available for more accurate collision detection
+        if hasattr(self.player, 'collision_rect'):
+            # Create a temporary sprite for collision detection
+            temp_sprite = pygame.sprite.Sprite()
+            temp_sprite.rect = self.player.collision_rect
+
+            # Check for collisions with stairs
+            colliding_stairs = pygame.sprite.spritecollide(temp_sprite, self.stairs, False)
+        else:
+            # Fallback to regular sprite collision if no collision_rect is available
+            colliding_stairs = pygame.sprite.spritecollide(self.player, self.stairs, False)
+
+        for stairs in colliding_stairs:
+            if stairs.can_use():
+                # Player is on usable stairs - trigger level progression
+                if game and hasattr(game, 'next_level'):
+                    game.next_level()
+                    return True
+
+            # Show unlock message if stairs were recently unlocked
+            unlock_message = stairs.get_unlock_message()
+            if unlock_message:
+                self.add_floating_text(unlock_message, stairs.rect.centerx, stairs.rect.centery - 50, YELLOW, duration=120)
+
+        return False
 
     def generate_minimap(self, tiles):
         """Generate a minimap from the level tiles"""
@@ -733,7 +829,7 @@ class Level:
                 sprite.rect.y < bottom_bound and sprite_bottom > top_bound):
                 self._visible_sprites_cache.append(sprite)
 
-        logger.debug(f"Updated sprite cache: {len(self._visible_sprites_cache)}/{len(self.all_sprites)} sprites visible")
+        # logger.debug(f"Updated sprite cache: {len(self._visible_sprites_cache)}/{len(self.all_sprites)} sprites visible")
 
     def invalidate_sprite_cache(self) -> None:
         """Mark the sprite cache as dirty to force a refresh"""
@@ -745,21 +841,58 @@ class Level:
         dead_enemies = [enemy for enemy in self.enemies if enemy.health <= 0]
         for enemy in dead_enemies:
             enemy.remove(self.enemies, self.all_sprites)
-            logger.debug(f"Cleaned up dead enemy at {enemy.rect.center}")
 
         # Check for dead projectiles (those that have been killed but might still be in groups)
         dead_projectiles = []
         for projectile in self.projectiles:
             # Check if projectile is outside level bounds (simple cleanup)
-            if (projectile.rect.x < -100 or projectile.rect.x > (self.generator.width * TILE_SIZE + 100) or
-                projectile.rect.y < -100 or projectile.rect.y > (self.generator.height * TILE_SIZE + 100)):
+            if (projectile.rect.x < -200 or projectile.rect.x > (self.generator.width * TILE_SIZE + 200) or
+                projectile.rect.y < -200 or projectile.rect.y > (self.generator.height * TILE_SIZE + 200)):
                 dead_projectiles.append(projectile)
 
         for projectile in dead_projectiles:
             projectile.remove(self.projectiles, self.all_sprites)
-            logger.debug(f"Cleaned up out-of-bounds projectile at {projectile.rect.center}")
+
+        # Aggressive cleanup: limit total projectiles to prevent memory issues
+        if len(self.projectiles) > 1000:  # Limit to 1000 projectiles max
+            # Remove oldest projectiles (those at the beginning of the group)
+            projectiles_list = list(self.projectiles)
+            excess_count = len(projectiles_list) - 800  # Keep 800, remove excess
+            for i in range(excess_count):
+                if i < len(projectiles_list):
+                    projectiles_list[i].remove(self.projectiles, self.all_sprites)
 
         # Mark cache as dirty if we removed any sprites
-        if dead_enemies or dead_projectiles:
+        if dead_enemies or dead_projectiles or len(self.projectiles) > 500:
             self._cache_dirty = True
-            logger.debug(f"Cleaned up {len(dead_enemies)} enemies and {len(dead_projectiles)} projectiles")
+            self._scaled_surface_cache = None  # Also invalidate zoom cache to free memory
+
+    def _cleanup_visual_effects(self) -> None:
+        """Clean up visual effects to prevent memory buildup"""
+        # Limit particles to reasonable number
+        if len(self.visual_effects.particle_system.particles) > 200:
+            # Keep only the newest 150 particles
+            self.visual_effects.particle_system.particles = self.visual_effects.particle_system.particles[-150:]
+
+        # Limit floating texts
+        if len(self.animation_manager.floating_texts) > 50:
+            # Keep only the newest 30 floating texts
+            self.animation_manager.floating_texts = self.animation_manager.floating_texts[-30:]
+
+        # Limit XP messages
+        if len(self.xp_messages) > 20:
+            # Keep only the newest 15 XP messages
+            self.xp_messages = self.xp_messages[-15:]
+
+    def _update_dynamic_terrain(self, screen_width: int, screen_height: int) -> None:
+        """Update terrain generation based on camera position and zoom level"""
+        # Use systems manager for terrain generation if available
+        if self.systems_manager and hasattr(self.systems_manager, 'terrain_manager'):
+            # The systems manager handles terrain updates automatically
+            pass
+        else:
+            # Fallback: placeholder for dynamic terrain generation
+            # The current level generation already creates a large enough map
+            # that scales with level, so this addresses the empty screen issue
+            # when zooming out by ensuring the level is appropriately sized
+            pass

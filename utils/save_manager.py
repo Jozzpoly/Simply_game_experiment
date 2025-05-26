@@ -1,6 +1,7 @@
 import json
 import os
 from utils.constants import *
+from config import PLAYER_BASE_SPEED
 
 class SaveManager:
     """Handles saving and loading game state with enhanced security"""
@@ -24,7 +25,7 @@ class SaveManager:
             "health": (1, PLAYER_HEALTH * 10),
             "max_health": (PLAYER_HEALTH, PLAYER_HEALTH * 10),
             "damage": (PLAYER_DAMAGE, PLAYER_DAMAGE * 10),
-            "speed": (1, PLAYER_SPEED * 5),
+            "speed": (1, PLAYER_BASE_SPEED * 5),
             "fire_rate": (100, PLAYER_FIRE_RATE * 2),
             "level": (1, 100),
             "xp": (0, 100000),
@@ -179,7 +180,7 @@ class SaveManager:
                 "health": PLAYER_HEALTH,
                 "max_health": PLAYER_HEALTH,
                 "damage": PLAYER_DAMAGE,
-                "speed": PLAYER_SPEED,
+                "speed": PLAYER_BASE_SPEED,
                 "fire_rate": PLAYER_FIRE_RATE,
                 "level": 1,
                 "xp": 0,

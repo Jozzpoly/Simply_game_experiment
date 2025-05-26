@@ -42,27 +42,34 @@ class Particle:
         return self.lifetime > 0
 
     def draw(self, surface: pygame.Surface, camera_offset_x: int = 0, camera_offset_y: int = 0):
-        """Draw the particle"""
+        """Draw the particle with optimized rendering"""
         if self.alpha <= 0:
             return
 
         screen_x = int(self.x - camera_offset_x)
         screen_y = int(self.y - camera_offset_y)
 
-        # Create a surface with alpha for the particle
-        particle_surface = pygame.Surface((self.size * 2, self.size * 2), pygame.SRCALPHA)
+        # Skip culling for now to test performance
+        # screen_width, screen_height = surface.get_size()
+        # if (screen_x < -self.size or screen_x > screen_width + self.size or
+        #     screen_y < -self.size or screen_y > screen_height + self.size):
+        #     return
 
-        # Draw the particle with proper alpha handling
         # Ensure color is a valid RGB tuple
         if isinstance(self.color, (list, tuple)) and len(self.color) >= 3:
             color = (int(self.color[0]), int(self.color[1]), int(self.color[2]))
         else:
             color = (255, 255, 255)  # Default to white if invalid color
 
-        pygame.draw.circle(particle_surface, color, (self.size, self.size), self.size)
-        particle_surface.set_alpha(self.alpha)
-
-        surface.blit(particle_surface, (screen_x - self.size, screen_y - self.size))
+        # For small particles, draw directly without creating surface (performance optimization)
+        if self.size <= 2 or self.alpha >= 200:
+            pygame.draw.circle(surface, color, (screen_x, screen_y), self.size)
+        else:
+            # Create a surface with alpha for larger or fading particles
+            particle_surface = pygame.Surface((self.size * 2, self.size * 2), pygame.SRCALPHA)
+            pygame.draw.circle(particle_surface, color, (self.size, self.size), self.size)
+            particle_surface.set_alpha(self.alpha)
+            surface.blit(particle_surface, (screen_x - self.size, screen_y - self.size))
 
 class ParticleSystem:
     """Manages multiple particles for various visual effects"""

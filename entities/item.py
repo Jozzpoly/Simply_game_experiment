@@ -179,11 +179,17 @@ class MultiShotBoost(Item):
         self.description = f"Triple shot for {MULTI_SHOT_DURATION // 60} seconds"
 
     def collect(self, player):
-        """Give player multi-shot ability"""
+        """Give player multi-shot ability - stacks duration properly"""
         if not hasattr(player, 'multi_shot_duration'):
             player.multi_shot_duration = 0
 
-        player.multi_shot_duration = MULTI_SHOT_DURATION
+        # Add to existing duration instead of replacing it (proper stacking)
+        player.multi_shot_duration += MULTI_SHOT_DURATION
+
+        # Cap the maximum duration to prevent excessive stacking
+        max_duration = MULTI_SHOT_DURATION * 5  # Max 5 stacks
+        player.multi_shot_duration = min(player.multi_shot_duration, max_duration)
+
         self.kill()
         return True
 

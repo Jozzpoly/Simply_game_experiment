@@ -5,6 +5,7 @@ from pygame.sprite import Group
 from entities.entity import Entity
 from entities.projectile import Projectile
 from utils.constants import *
+from config import PLAYER_BASE_SPEED
 from utils.animation_system import EnhancedSpriteAnimator
 from progression.skill_tree import SkillTree
 from progression.equipment import EquipmentManager
@@ -19,7 +20,7 @@ class Player(Entity):
 
     def __init__(self, x: int, y: int) -> None:
         super().__init__(x, y, PLAYER_IMG, PLAYER_HEALTH)
-        self.speed: float = PLAYER_SPEED
+        self.speed: float = PLAYER_BASE_SPEED
         self.fire_rate: int = PLAYER_FIRE_RATE
         self.damage: int = PLAYER_DAMAGE
 
@@ -220,12 +221,12 @@ class Player(Entity):
             if hasattr(self, 'audio_manager') and self.audio_manager:
                 self.audio_manager.play_sound('player_shoot')
 
-            # Create additional projectiles from skills (multishot)
+            # Calculate total extra projectiles from all sources
             total_extra_projectiles = extra_projectiles
 
-            # Add item-based multi-shot projectiles
+            # Add item-based multi-shot projectiles - they stack with skill multishot
             if self.multi_shot_duration > 0:
-                total_extra_projectiles += 2  # Item gives 2 extra projectiles
+                total_extra_projectiles += 2  # Item always gives 2 extra projectiles
 
             if total_extra_projectiles > 0:
                 import math

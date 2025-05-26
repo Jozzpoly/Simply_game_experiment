@@ -1,5 +1,9 @@
 import random
+import logging
 from utils.constants import *
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 class Room:
     """A rectangular room in the dungeon"""
@@ -60,17 +64,19 @@ class LevelGenerator:
         self.enemy_positions = []
         self.enemy_groups = []  # New: Track enemy groups for tactical placement
         self.item_positions = []
+        self.stairs_positions = []  # New: Track stairs positions
         self.player_start_pos = None
 
         # Enhanced scaling based on current level number
         self.max_rooms = min(MAX_ROOMS + current_level * 2, 80)  # More rooms for larger levels
-        self.max_enemies = min(MAX_ENEMIES_BASE + (current_level * ENEMY_SCALING_FACTOR * 1.5), MAX_ENEMIES_CAP * 2)
+        # Fix: Ensure level 1 has enemies - use max() to guarantee minimum enemies
+        self.max_enemies = max(MAX_ENEMIES_BASE, min(MAX_ENEMIES_BASE + (current_level * ENEMY_SCALING_FACTOR), MAX_ENEMIES_CAP * 2))
         self.items_per_level = min(ITEMS_PER_LEVEL + current_level // 2, 15)  # More items for longer levels
 
         # Enemy density scaling - more enemies per room at higher levels
         self.enemy_density_multiplier = 1.0 + (current_level * 0.1)  # 10% more enemies per level
-        self.min_group_size = max(2, current_level // 3)  # Larger groups at higher levels
-        self.max_group_size = max(4, current_level // 2)  # Scale group size with level
+        self.min_group_size = max(1, current_level // 3)  # Start with 1 enemy groups for level 1
+        self.max_group_size = max(3, current_level // 2)  # Scale group size with level
 
     def _calculate_map_width(self, level: int, base_width: int) -> int:
         """Calculate map width based on level progression"""
@@ -91,6 +97,7 @@ class LevelGenerator:
         self.rooms = []
         self.enemy_positions = []
         self.item_positions = []
+        self.stairs_positions = []
 
         # Create rooms with enhanced variety and scaling
         for room_index in range(self.max_rooms):
@@ -142,7 +149,10 @@ class LevelGenerator:
             # Generate item positions based on room types
             self._generate_items()
 
-        return self.tiles, self.player_start_pos, self.enemy_positions, self.item_positions
+            # Generate stairs positions
+            self._generate_stairs()
+
+        return self.tiles, self.player_start_pos, self.enemy_positions, self.item_positions, self.stairs_positions
 
     def _determine_room_properties(self, room_index: int) -> tuple[str, int, int]:
         """Determine room type and size based on level progression and room index"""
@@ -348,32 +358,36 @@ class LevelGenerator:
         return random.choice(formations)
 
     def _generate_formation_positions(self, room, center, count: int, formation: str) -> list:
-        """Generate enemy positions based on formation type"""
+        """Generate enemy positions based on formation type with collision detection"""
         positions = []
         center_x, center_y = center
 
         if formation == 'cluster':
             # Enemies clustered around center point
             for i in range(count):
-                offset_x = random.randint(-30, 30)
-                offset_y = random.randint(-30, 30)
-                pos = (center_x + offset_x, center_y + offset_y)
-                # Ensure position is within room bounds
-                if room.contains_point(pos[0], pos[1]):
+                pos = self._find_safe_enemy_position_in_room(room, center_x, center_y, 30)
+                if pos:
                     positions.append(pos)
                 else:
-                    positions.append(room.get_random_position())
+                    # Fallback to random safe position
+                    fallback_pos = self._find_random_safe_position_in_room(room)
+                    if fallback_pos:
+                        positions.append(fallback_pos)
 
         elif formation == 'line':
             # Enemies in a line formation
             spacing = 40
             start_x = center_x - (count - 1) * spacing // 2
             for i in range(count):
-                pos = (start_x + i * spacing, center_y)
-                if room.contains_point(pos[0], pos[1]):
+                target_x = start_x + i * spacing
+                target_y = center_y
+                pos = self._find_safe_enemy_position_in_room(room, target_x, target_y, 20)
+                if pos:
                     positions.append(pos)
                 else:
-                    positions.append(room.get_random_position())
+                    fallback_pos = self._find_random_safe_position_in_room(room)
+                    if fallback_pos:
+                        positions.append(fallback_pos)
 
         elif formation == 'circle':
             # Enemies in a circle around center
@@ -381,29 +395,41 @@ class LevelGenerator:
             radius = 50
             for i in range(count):
                 angle = (2 * math.pi * i) / count
-                pos_x = center_x + radius * math.cos(angle)
-                pos_y = center_y + radius * math.sin(angle)
-                pos = (int(pos_x), int(pos_y))
-                if room.contains_point(pos[0], pos[1]):
+                target_x = center_x + radius * math.cos(angle)
+                target_y = center_y + radius * math.sin(angle)
+                pos = self._find_safe_enemy_position_in_room(room, int(target_x), int(target_y), 20)
+                if pos:
                     positions.append(pos)
                 else:
-                    positions.append(room.get_random_position())
+                    fallback_pos = self._find_random_safe_position_in_room(room)
+                    if fallback_pos:
+                        positions.append(fallback_pos)
 
         elif formation == 'wedge':
             # V-shaped formation
             for i in range(count):
                 if i == 0:
                     # Leader at the front
-                    positions.append((center_x, center_y - 20))
+                    pos = self._find_safe_enemy_position_in_room(room, center_x, center_y - 20, 15)
+                    if pos:
+                        positions.append(pos)
+                    else:
+                        fallback_pos = self._find_random_safe_position_in_room(room)
+                        if fallback_pos:
+                            positions.append(fallback_pos)
                 else:
                     # Others form the wedge
                     side = 1 if i % 2 == 1 else -1
                     row = (i + 1) // 2
-                    pos = (center_x + side * row * 30, center_y + row * 25)
-                    if room.contains_point(pos[0], pos[1]):
+                    target_x = center_x + side * row * 30
+                    target_y = center_y + row * 25
+                    pos = self._find_safe_enemy_position_in_room(room, target_x, target_y, 15)
+                    if pos:
                         positions.append(pos)
                     else:
-                        positions.append(room.get_random_position())
+                        fallback_pos = self._find_random_safe_position_in_room(room)
+                        if fallback_pos:
+                            positions.append(fallback_pos)
 
         elif formation == 'defensive':
             # Defensive positions around a central point (for boss support)
@@ -411,20 +437,171 @@ class LevelGenerator:
             radius = 80
             for i in range(count):
                 angle = (2 * math.pi * i) / count
-                pos_x = center_x + radius * math.cos(angle)
-                pos_y = center_y + radius * math.sin(angle)
-                pos = (int(pos_x), int(pos_y))
-                if room.contains_point(pos[0], pos[1]):
+                target_x = center_x + radius * math.cos(angle)
+                target_y = center_y + radius * math.sin(angle)
+                pos = self._find_safe_enemy_position_in_room(room, int(target_x), int(target_y), 25)
+                if pos:
                     positions.append(pos)
                 else:
-                    positions.append(room.get_random_position())
+                    fallback_pos = self._find_random_safe_position_in_room(room)
+                    if fallback_pos:
+                        positions.append(fallback_pos)
 
         else:  # 'ambush', 'patrol', or fallback
-            # Random positions within room
+            # Random safe positions within room
             for _ in range(count):
-                positions.append(room.get_random_position())
+                pos = self._find_random_safe_position_in_room(room)
+                if pos:
+                    positions.append(pos)
 
         return positions
+
+    def _generate_stairs(self):
+        """Generate stairs positions for level progression"""
+        from config import STAIRS_ENABLED
+
+        if not STAIRS_ENABLED or not self.rooms:
+            return
+
+        # Place down stairs in the last room (farthest from player start)
+        if len(self.rooms) >= 2:
+            # Find the room farthest from the first room (player start)
+            start_room = self.rooms[0]
+            farthest_room = None
+            max_distance = 0
+
+            for room in self.rooms[1:]:  # Skip first room
+                # Calculate distance from start room center to this room center
+                dx = room.center_x - start_room.center_x
+                dy = room.center_y - start_room.center_y
+                distance = (dx * dx + dy * dy) ** 0.5
+
+                if distance > max_distance:
+                    max_distance = distance
+                    farthest_room = room
+
+            if farthest_room:
+                # Place down stairs in the center of the farthest room
+                stairs_x = farthest_room.center_x * TILE_SIZE
+                stairs_y = farthest_room.center_y * TILE_SIZE
+
+                # Ensure stairs don't overlap with existing entities
+                stairs_pos = self._find_safe_position_in_room(farthest_room, stairs_x, stairs_y)
+                if stairs_pos:
+                    self.stairs_positions.append(("down", stairs_pos))
+
+        # Optionally place up stairs in a different room (for future use)
+        # For now, we only need down stairs for progression
+
+    def _find_safe_position_in_room(self, room, preferred_x: int, preferred_y: int) -> tuple:
+        """Find a safe position in room that doesn't overlap with other entities"""
+        # Convert pixel coordinates to tile coordinates
+        preferred_tile_x = preferred_x // TILE_SIZE
+        preferred_tile_y = preferred_y // TILE_SIZE
+
+        # Check if preferred position is safe
+        if self._is_position_safe(preferred_tile_x, preferred_tile_y, room):
+            return (preferred_x, preferred_y)
+
+        # Try nearby positions in a spiral pattern
+        for radius in range(1, 5):
+            for dx in range(-radius, radius + 1):
+                for dy in range(-radius, radius + 1):
+                    if abs(dx) == radius or abs(dy) == radius:  # Only check perimeter
+                        test_x = preferred_tile_x + dx
+                        test_y = preferred_tile_y + dy
+
+                        if self._is_position_safe(test_x, test_y, room):
+                            return (test_x * TILE_SIZE, test_y * TILE_SIZE)
+
+        # Fallback to random position in room
+        return (room.center_x * TILE_SIZE, room.center_y * TILE_SIZE)
+
+    def _is_position_safe(self, tile_x: int, tile_y: int, room) -> bool:
+        """Check if a tile position is safe for placing stairs"""
+        # Check if position is within room bounds
+        if not room.contains_point(tile_x, tile_y):
+            return False
+
+        # Check if position is a floor tile
+        if (0 <= tile_x < self.width and 0 <= tile_y < self.height and
+            self.tiles[tile_y][tile_x] != 0):  # 0 = floor
+            return False
+
+        # Check if position conflicts with existing entities
+        pixel_x = tile_x * TILE_SIZE
+        pixel_y = tile_y * TILE_SIZE
+
+        # Check against enemy positions
+        for enemy_data in self.enemy_positions:
+            if len(enemy_data) >= 2:
+                enemy_pos = enemy_data[1] if isinstance(enemy_data, tuple) else enemy_data
+                if isinstance(enemy_pos, tuple) and len(enemy_pos) >= 2:
+                    if abs(enemy_pos[0] - pixel_x) < TILE_SIZE and abs(enemy_pos[1] - pixel_y) < TILE_SIZE:
+                        return False
+
+        # Check against item positions
+        for item_pos in self.item_positions:
+            if isinstance(item_pos, tuple) and len(item_pos) >= 2:
+                if abs(item_pos[0] - pixel_x) < TILE_SIZE and abs(item_pos[1] - pixel_y) < TILE_SIZE:
+                    return False
+
+        return True
+
+    def _find_safe_enemy_position_in_room(self, room, center_x: int, center_y: int, max_offset: int) -> tuple:
+        """Find a safe position for enemy spawning near a center point"""
+        # Try positions in a spiral pattern around the center
+        for radius in range(0, max_offset, 5):
+            for angle_step in range(0, 360, 30):  # Check every 30 degrees
+                import math
+                angle = math.radians(angle_step)
+                test_x = center_x + radius * math.cos(angle)
+                test_y = center_y + radius * math.sin(angle)
+
+                # Convert to tile coordinates
+                tile_x = int(test_x // TILE_SIZE)
+                tile_y = int(test_y // TILE_SIZE)
+
+                if self._is_enemy_position_safe(tile_x, tile_y, room):
+                    return (int(test_x), int(test_y))
+
+        return None
+
+    def _find_random_safe_position_in_room(self, room) -> tuple:
+        """Find a random safe position for enemy spawning in a room"""
+        max_attempts = 20
+        for _ in range(max_attempts):
+            # Get random position in room
+            tile_x = random.randint(room.x + 1, room.x + room.width - 2)
+            tile_y = random.randint(room.y + 1, room.y + room.height - 2)
+
+            if self._is_enemy_position_safe(tile_x, tile_y, room):
+                return (tile_x * TILE_SIZE, tile_y * TILE_SIZE)
+
+        # Fallback to room center if no safe position found
+        return (room.center_x * TILE_SIZE, room.center_y * TILE_SIZE)
+
+    def _is_enemy_position_safe(self, tile_x: int, tile_y: int, room) -> bool:
+        """Check if a tile position is safe for enemy spawning"""
+        # Check if position is within room bounds
+        if not room.contains_point(tile_x, tile_y):
+            return False
+
+        # Check if position is a floor tile (not wall)
+        if (0 <= tile_x < self.width and 0 <= tile_y < self.height and
+            self.tiles[tile_y][tile_x] != 0):  # 0 = floor, 1 = wall
+            return False
+
+        # Check minimum distance from player start position
+        if self.player_start_pos:
+            # player_start_pos is already in tile coordinates, not pixels
+            player_tile_x = self.player_start_pos[0]
+            player_tile_y = self.player_start_pos[1]
+            distance = ((tile_x - player_tile_x) ** 2 + (tile_y - player_tile_y) ** 2) ** 0.5
+            if distance < 3:  # Minimum 3 tiles away from player start
+                return False
+
+        return True
 
     def _generate_items(self):
         """Generate item positions based on room types"""
