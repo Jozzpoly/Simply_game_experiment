@@ -53,6 +53,7 @@ class Player(Entity):
             "near_death_survivals": 0,
             "skills_learned": 0,
             "maxed_skills": 0,
+            "maxed_combat_skills": 0,
             "equipment_equipped": 0,
             "full_equipment_sets": 0,
             "items_collected": 0,
@@ -60,7 +61,8 @@ class Player(Entity):
             "max_crit_streak": 0,
             "current_crit_streak": 0,
             "fastest_level_time": float('inf'),
-            "player_level": 1
+            "player_level": 1,
+            "total_damage_dealt": 0
         }
 
         # Regeneration timer for health regen skill
@@ -162,7 +164,12 @@ class Player(Entity):
             base_damage = self.get_effective_damage()
             final_damage, is_critical = self.calculate_critical_hit(base_damage)
 
-            # Create projectile
+            # Get skill-based bonuses
+            pierce_count = int(self.skill_tree.get_total_bonus("pierce_count"))
+            explosion_radius = self.skill_tree.get_total_bonus("explosion_radius")
+            extra_projectiles = int(self.skill_tree.get_total_bonus("extra_projectiles"))
+
+            # Create main projectile
             projectile = Projectile(
                 start_x,
                 start_y,
@@ -173,9 +180,13 @@ class Player(Entity):
                 is_player_projectile=True
             )
 
-            # Mark projectile as critical for visual effects
+            # Apply skill effects to projectile
             if is_critical:
                 projectile.is_critical = True
+            if pierce_count > 0:
+                projectile.pierce_count = pierce_count
+            if explosion_radius > 0:
+                projectile.explosion_radius = explosion_radius
 
             # Add to group
             projectiles_group.add(projectile)
@@ -184,12 +195,22 @@ class Player(Entity):
             if hasattr(self, 'audio_manager') and self.audio_manager:
                 self.audio_manager.play_sound('player_shoot')
 
-            # Check for multi-shot effect
+            # Create additional projectiles from skills (multishot)
+            total_extra_projectiles = extra_projectiles
+
+            # Add item-based multi-shot projectiles
             if self.multi_shot_duration > 0:
-                # Create additional projectiles for multi-shot
+                total_extra_projectiles += 2  # Item gives 2 extra projectiles
+
+            if total_extra_projectiles > 0:
                 import math
-                angles = [-0.3, 0.3]  # Side angles in radians
-                for angle in angles:
+                # Calculate spread angles for additional projectiles
+                angle_step = 0.3  # Base angle between projectiles
+                start_angle = -(total_extra_projectiles * angle_step) / 2
+
+                for i in range(total_extra_projectiles):
+                    angle = start_angle + (i * angle_step)
+
                     # Calculate rotated direction
                     cos_a = math.cos(angle)
                     sin_a = math.sin(angle)
@@ -197,16 +218,25 @@ class Player(Entity):
                     rotated_y = direction.x * sin_a + direction.y * cos_a
                     rotated_direction = pygame.math.Vector2(rotated_x, rotated_y)
 
-                    # Create additional projectile
+                    # Create additional projectile with same properties as main projectile
                     multi_projectile = Projectile(
                         start_x,
                         start_y,
                         rotated_direction,
                         PLAYER_PROJECTILE_IMG,
                         PROJECTILE_SPEED,
-                        self.damage,
+                        final_damage,
                         is_player_projectile=True
                     )
+
+                    # Apply same skill effects
+                    if is_critical:
+                        multi_projectile.is_critical = True
+                    if pierce_count > 0:
+                        multi_projectile.pierce_count = pierce_count
+                    if explosion_radius > 0:
+                        multi_projectile.explosion_radius = explosion_radius
+
                     projectiles_group.add(multi_projectile)
 
             return True
@@ -381,7 +411,8 @@ class Player(Entity):
     def heal(self, amount: int) -> int:
         """Heal the player by the given amount with visual effects"""
         old_health = self.health
-        self.health = min(self.max_health, self.health + amount)
+        effective_max_health = self.get_effective_max_health()
+        self.health = min(effective_max_health, self.health + amount)
         actual_heal = self.health - old_health
 
         # Add healing visual effects if we have a reference to the level
@@ -410,7 +441,8 @@ class Player(Entity):
         total_damage = base_damage + equipment_bonus
         total_damage *= (1.0 + weapon_mastery_bonus)
 
-        return total_damage
+        # Cap damage at reasonable maximum (10000)
+        return min(10000.0, total_damage)
 
     def get_effective_speed(self) -> float:
         """Get effective speed including all bonuses"""
@@ -448,7 +480,18 @@ class Player(Entity):
         # Equipment critical chance
         equipment_crit = self.equipment_manager.get_total_stat_bonus("critical_chance")
 
-        return skill_crit + equipment_crit
+        # Cap critical chance at 95% (0.95)
+        return min(0.95, skill_crit + equipment_crit)
+
+    def get_critical_multiplier(self) -> float:
+        """Get critical hit damage multiplier"""
+        base_multiplier = 2.0  # 200% damage on critical hits
+
+        # Check for synergy bonuses that affect critical damage
+        synergy_bonuses = self.skill_tree.calculate_synergy_bonuses()
+        crit_damage_bonus = synergy_bonuses.get("critical_damage_multiplier", 0.0)
+
+        return base_multiplier + crit_damage_bonus
 
     def get_damage_reduction(self) -> float:
         """Get damage reduction from skills and equipment"""
@@ -463,6 +506,19 @@ class Player(Entity):
         total_reduction = armor_mastery + damage_resistance + equipment_reduction
         return min(0.9, total_reduction)
 
+    def get_effective_max_health(self) -> int:
+        """Get effective max health including equipment bonuses"""
+        base_max_health = self.max_health
+
+        # Equipment health bonus
+        equipment_bonus = self.equipment_manager.get_total_stat_bonus("health_bonus")
+
+        # Calculate total max health
+        total_max_health = int(base_max_health + equipment_bonus)
+
+        # Cap max health at reasonable maximum (50000)
+        return min(50000, total_max_health)
+
     def get_xp_bonus(self) -> float:
         """Get XP bonus from skills and equipment"""
         # Skill XP bonus
@@ -472,6 +528,22 @@ class Player(Entity):
         equipment_bonus = self.equipment_manager.get_total_stat_bonus("xp_bonus")
 
         return skill_bonus + equipment_bonus
+
+    def get_projectile_speed_bonus(self) -> float:
+        """Get projectile speed bonus from equipment"""
+        return self.equipment_manager.get_total_stat_bonus("projectile_speed")
+
+    def get_item_find_bonus(self) -> float:
+        """Get item find bonus from equipment"""
+        return self.equipment_manager.get_total_stat_bonus("item_find")
+
+    def get_skill_cooldown_reduction(self) -> float:
+        """Get skill cooldown reduction from equipment"""
+        return self.equipment_manager.get_total_stat_bonus("skill_cooldown")
+
+    def get_resource_bonus(self) -> float:
+        """Get resource bonus from equipment"""
+        return self.equipment_manager.get_total_stat_bonus("resource_bonus")
 
     def update_progression_stats(self, stat_name: str, value: int = 1) -> None:
         """Update a progression statistic and check achievements"""
@@ -490,27 +562,39 @@ class Player(Entity):
 
     def apply_skill_effects(self) -> None:
         """Apply passive skill effects like health regeneration"""
-        # Health regeneration
-        regen_amount = self.skill_tree.get_total_bonus("regen_amount")
-        if regen_amount > 0:
+        # Health regeneration from skills
+        skill_regen_amount = self.skill_tree.get_total_bonus("regen_amount")
+
+        # Health regeneration from equipment
+        equipment_regen_amount = self.equipment_manager.get_total_stat_bonus("regeneration")
+
+        # Total regeneration amount
+        total_regen_amount = skill_regen_amount + equipment_regen_amount
+
+        if total_regen_amount > 0:
+            # Use skill regen interval if available, otherwise default to 60 frames (1 second at 60 FPS)
             regen_interval = self.skill_tree.get_skill_bonus("health_regeneration", "regen_interval")
-            if regen_interval > 0:
-                self.regen_timer += 1
-                if self.regen_timer >= regen_interval:
-                    self.regen_timer = 0
-                    if self.health < self.max_health:
-                        self.heal(int(regen_amount))
+            if regen_interval <= 0:
+                regen_interval = 60  # Default interval for equipment regeneration
+
+            self.regen_timer += 1
+            if self.regen_timer >= regen_interval:
+                self.regen_timer = 0
+                effective_max_health = self.get_effective_max_health()
+                if self.health < effective_max_health:
+                    self.heal(int(total_regen_amount))
 
         # Second Wind effect
         second_wind_level = self.skill_tree.skills["second_wind"].current_level
         if second_wind_level > 0:
+            effective_max_health = self.get_effective_max_health()
             health_threshold = self.skill_tree.get_skill_bonus("second_wind", "health_threshold")
-            if self.health / self.max_health <= health_threshold:
+            if self.health / effective_max_health <= health_threshold:
                 # Trigger second wind (once per near-death experience)
                 if not hasattr(self, '_second_wind_triggered'):
                     self._second_wind_triggered = True
                     heal_amount = self.skill_tree.get_skill_bonus("second_wind", "heal_amount")
-                    heal_value = int(self.max_health * heal_amount)
+                    heal_value = int(effective_max_health * heal_amount)
                     self.heal(heal_value)
                     self.update_progression_stats("near_death_survivals")
             else:

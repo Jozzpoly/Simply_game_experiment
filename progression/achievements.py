@@ -11,26 +11,57 @@ from utils.constants import *
 
 
 class Achievement:
-    """Represents a single achievement"""
+    """Represents a single achievement with support for progressive and chain types"""
 
     def __init__(self, name: str, description: str, reward_xp: int = 0,
                  reward_skill_points: int = 0, condition: Optional[Callable] = None,
-                 hidden: bool = False):
+                 hidden: bool = False, achievement_type: str = "simple",
+                 max_progress: int = 1, prerequisites: Optional[List[str]] = None):
         self.name = name
         self.description = description
         self.reward_xp = reward_xp
         self.reward_skill_points = reward_skill_points
         self.condition = condition
         self.hidden = hidden
+        self.achievement_type = achievement_type
         self.unlocked = False
         self.progress = 0
-        self.max_progress = 1
+        self.max_progress = max_progress
+        self.prerequisites = prerequisites or []
 
     def check_condition(self, player_stats: Dict[str, Any]) -> bool:
         """Check if the achievement condition is met"""
         if self.condition:
-            return self.condition(player_stats)
+            if self.achievement_type == "progressive":
+                # For progressive achievements, update progress
+                new_progress = self.condition(player_stats)
+                if isinstance(new_progress, (int, float)):
+                    self.progress = min(new_progress, self.max_progress)
+                    return self.progress >= self.max_progress
+                else:
+                    return new_progress
+            else:
+                return self.condition(player_stats)
         return False
+
+    def update_progress(self, amount: int = 1) -> bool:
+        """Update progress for progressive achievements"""
+        if self.achievement_type == "progressive" and not self.unlocked:
+            self.progress = min(self.progress + amount, self.max_progress)
+            return self.progress >= self.max_progress
+        return False
+
+    def get_progress_percentage(self) -> float:
+        """Get progress as a percentage"""
+        if self.max_progress <= 0:
+            return 100.0 if self.unlocked else 0.0
+        return min(100.0, (self.progress / self.max_progress) * 100.0)
+
+    def is_available(self, unlocked_achievements: List[str]) -> bool:
+        """Check if achievement is available based on prerequisites"""
+        if not self.prerequisites:
+            return True
+        return all(prereq in unlocked_achievements for prereq in self.prerequisites)
 
     def unlock(self) -> Dict[str, int]:
         """Unlock the achievement and return rewards"""
@@ -47,13 +78,16 @@ class Achievement:
         return {
             "name": self.name,
             "unlocked": self.unlocked,
-            "progress": self.progress
+            "progress": self.progress,
+            "achievement_type": self.achievement_type,
+            "max_progress": self.max_progress
         }
 
     def from_dict(self, data: Dict[str, Any]) -> None:
         """Load achievement from dictionary"""
         self.unlocked = data.get("unlocked", False)
         self.progress = data.get("progress", 0)
+        # achievement_type and max_progress are set during initialization
 
 
 class AchievementManager:
@@ -62,7 +96,10 @@ class AchievementManager:
     def __init__(self):
         self.achievements: Dict[str, Achievement] = {}
         self.recently_unlocked: List[Achievement] = []
+        self.achievement_chains: Dict[str, Dict[str, Any]] = {}
+        self.completed_chains: List[str] = []
         self._initialize_achievements()
+        self._initialize_achievement_chains()
 
     def _initialize_achievements(self) -> None:
         """Initialize all available achievements"""
@@ -229,8 +266,8 @@ class AchievementManager:
         )
 
         # Hidden achievements
-        self.achievements["secret_path"] = Achievement(
-            "Secret Path",
+        self.achievements["secret_finder"] = Achievement(
+            "Secret Finder",
             "Discover a hidden area",
             reward_xp=50,
             reward_skill_points=1,
@@ -246,17 +283,106 @@ class AchievementManager:
             hidden=True
         )
 
+        # Progressive achievements
+        self.achievements["enemy_slayer"] = Achievement(
+            "Enemy Slayer",
+            "Defeat 100 enemies",
+            reward_xp=150,
+            reward_skill_points=2,
+            condition=lambda stats: stats.get("enemies_killed", 0),
+            achievement_type="progressive",
+            max_progress=100
+        )
+
+        self.achievements["damage_dealer"] = Achievement(
+            "Damage Dealer",
+            "Deal 10,000 total damage",
+            reward_xp=200,
+            reward_skill_points=2,
+            condition=lambda stats: stats.get("total_damage_dealt", 0),
+            achievement_type="progressive",
+            max_progress=10000
+        )
+
+        self.achievements["treasure_hunter"] = Achievement(
+            "Treasure Hunter",
+            "Collect 50 items",
+            reward_xp=100,
+            reward_skill_points=1,
+            condition=lambda stats: stats.get("items_collected", 0),
+            achievement_type="progressive",
+            max_progress=50
+        )
+
+        # Chain achievements
+        self.achievements["combat_master"] = Achievement(
+            "Combat Master",
+            "Master all combat skills",
+            reward_xp=300,
+            reward_skill_points=3,
+            condition=lambda stats: stats.get("maxed_combat_skills", 0) >= 5,
+            achievement_type="chain",
+            prerequisites=["boss_hunter", "enemy_slayer"]
+        )
+
+        self.achievements["immortal"] = Achievement(
+            "Immortal",
+            "Complete 20 perfect levels",
+            reward_xp=400,
+            reward_skill_points=4,
+            condition=lambda stats: stats.get("perfect_levels", 0) >= 20,
+            achievement_type="chain",
+            prerequisites=["perfectionist", "damage_dealer"]
+        )
+
+        self.achievements["master_explorer"] = Achievement(
+            "Master Explorer",
+            "Find all secrets and collect all treasures",
+            reward_xp=250,
+            reward_skill_points=3,
+            condition=lambda stats: (stats.get("secrets_found", 0) >= 10 and
+                                   stats.get("items_collected", 0) >= 100),
+            achievement_type="chain",
+            prerequisites=["treasure_hunter", "secret_finder"]
+        )
+
+    def _initialize_achievement_chains(self) -> None:
+        """Initialize achievement chains from constants"""
+        self.achievement_chains = ACHIEVEMENT_CHAINS.copy()
+
     def check_achievements(self, player_stats: Dict[str, Any]) -> List[Achievement]:
         """Check all achievements and return newly unlocked ones"""
         newly_unlocked = []
+        unlocked_names = [name for name, ach in self.achievements.items() if ach.unlocked]
 
         for achievement in self.achievements.values():
-            if not achievement.unlocked and achievement.check_condition(player_stats):
-                newly_unlocked.append(achievement)
-                achievement.unlock()
+            if not achievement.unlocked:
+                # Check if prerequisites are met for chain achievements
+                if achievement.achievement_type == "chain":
+                    if not achievement.is_available(unlocked_names):
+                        continue
+
+                # Check achievement condition
+                if achievement.check_condition(player_stats):
+                    newly_unlocked.append(achievement)
+                    achievement.unlock()
+
+        # Check for completed chains
+        self._check_achievement_chains(newly_unlocked)
 
         self.recently_unlocked.extend(newly_unlocked)
         return newly_unlocked
+
+    def _check_achievement_chains(self, newly_unlocked: List[Achievement]) -> None:
+        """Check if any achievement chains have been completed"""
+        for chain_name, chain_data in self.achievement_chains.items():
+            if chain_name not in self.completed_chains:
+                required_achievements = chain_data["achievements"]
+                if all(self.achievements.get(ach_name, Achievement("", "")).unlocked
+                       for ach_name in required_achievements):
+                    # Chain completed! Award chain rewards
+                    self.completed_chains.append(chain_name)
+                    # Could add chain completion notification here
 
     def get_unlocked_achievements(self) -> List[Achievement]:
         """Get all unlocked achievements"""
@@ -285,7 +411,8 @@ class AchievementManager:
             "achievements": {
                 name: achievement.to_dict()
                 for name, achievement in self.achievements.items()
-            }
+            },
+            "completed_chains": self.completed_chains.copy()
         }
 
     def from_dict(self, data: Dict[str, Any]) -> None:
@@ -294,3 +421,6 @@ class AchievementManager:
         for name, ach_data in achievements_data.items():
             if name in self.achievements:
                 self.achievements[name].from_dict(ach_data)
+
+        # Load completed chains
+        self.completed_chains = data.get("completed_chains", [])

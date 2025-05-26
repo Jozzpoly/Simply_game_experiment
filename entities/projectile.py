@@ -23,6 +23,13 @@ class Projectile(pygame.sprite.Sprite):
         self.is_player_projectile = is_player_projectile
         self.killed_enemy = False  # Flag to track if this projectile killed an enemy
 
+        # Skill-based properties
+        self.is_critical = False
+        self.pierce_count = 0  # How many enemies this projectile can pierce through
+        self.pierced_enemies = 0  # How many enemies have been pierced
+        self.explosion_radius = 0  # Explosion radius for explosive shots
+        self.hit_enemies = set()  # Track which enemies this projectile has already hit
+
         # Lifetime
         self.creation_time = pygame.time.get_ticks()
         self.lifetime = 5000  # milliseconds
@@ -32,9 +39,16 @@ class Projectile(pygame.sprite.Sprite):
         self.rotation = 0
         self.rotation_speed = random.randint(5, 15) if is_player_projectile else 0
 
+        # Enhanced visual effects for critical hits
+        if hasattr(self, 'is_critical') and self.is_critical:
+            # Make critical projectiles slightly larger and more vibrant
+            self.image = pygame.transform.scale(self.image, (int(self.image.get_width() * 1.2), int(self.image.get_height() * 1.2)))
+            self.original_image = self.image.copy()
+            self.rotation_speed *= 2  # Faster rotation for critical projectiles
+
         # Trail effect (for player projectiles)
         self.trail = []
-        self.trail_length = 5 if is_player_projectile else 0
+        self.trail_length = 8 if (is_player_projectile and hasattr(self, 'is_critical') and self.is_critical) else 5 if is_player_projectile else 0
         self.trail_timer = 0
         self.trail_update_rate = 2  # frames between trail updates
 
@@ -67,22 +81,35 @@ class Projectile(pygame.sprite.Sprite):
 
         # Check for entity collisions
         if self.is_player_projectile and enemies:
-            # Player projectile hitting enemies
-            hit_enemy = pygame.sprite.spritecollideany(self, enemies)
-            if hit_enemy:
+            # Player projectile hitting enemies - check all colliding enemies
+            hit_enemies = pygame.sprite.spritecollide(self, enemies, False)
+
+            # Process each enemy we're colliding with
+            for hit_enemy in hit_enemies:
+                # Skip if we've already hit this enemy
+                if id(hit_enemy) in self.hit_enemies:
+                    continue
+
+                # Mark this enemy as hit
+                self.hit_enemies.add(id(hit_enemy))
+
                 # Add impact visual effects
                 if game and hasattr(game, 'level') and hasattr(game.level, 'visual_effects'):
-                    # Impact particles
+                    # Enhanced impact particles for critical hits
+                    particle_count = 10 if self.is_critical else 6
+                    particle_color = (255, 255, 0) if self.is_critical else RED  # Yellow for crits
+
                     game.level.visual_effects.particle_system.add_impact_effect(
                         self.rect.centerx, self.rect.centery,
                         self.direction.x, self.direction.y,
-                        RED, particle_count=6
+                        particle_color, particle_count=particle_count
                     )
 
-                    # Screen shake for enemy hits
-                    game.level.visual_effects.screen_effects.add_screen_shake(intensity=2.0, duration=5)
+                    # Enhanced screen shake for critical hits
+                    shake_intensity = 4.0 if self.is_critical else 2.0
+                    game.level.visual_effects.screen_effects.add_screen_shake(intensity=shake_intensity, duration=5)
 
-                # If enemy is killed, add score and set flag
+                # Apply damage to enemy
                 enemy_died = hit_enemy.take_damage(self.damage)
                 if enemy_died and game:
                     game.score += ENEMY_KILL_SCORE
@@ -91,15 +118,29 @@ class Projectile(pygame.sprite.Sprite):
 
                     # Add explosion effect for enemy death
                     if hasattr(game, 'level') and hasattr(game.level, 'visual_effects'):
+                        explosion_particles = 15 if self.is_critical else 12
                         game.level.visual_effects.particle_system.add_explosion(
                             hit_enemy.rect.centerx, hit_enemy.rect.centery,
-                            ORANGE, particle_count=12, intensity=6.0
+                            ORANGE, particle_count=explosion_particles, intensity=6.0
                         )
                         # Bigger screen shake for enemy death
-                        game.level.visual_effects.screen_effects.add_screen_shake(intensity=4.0, duration=8)
+                        death_shake = 6.0 if self.is_critical else 4.0
+                        game.level.visual_effects.screen_effects.add_screen_shake(intensity=death_shake, duration=8)
 
-                self.kill()
-                return
+                # Handle explosive shots
+                if self.explosion_radius > 0:
+                    self._create_explosion(hit_enemy.rect.centerx, hit_enemy.rect.centery, enemies, game)
+
+                # Increment pierced enemies count
+                self.pierced_enemies += 1
+
+                # Check if we should continue piercing or stop
+                if self.pierce_count <= 0 or self.pierced_enemies > self.pierce_count:
+                    # No piercing ability or piercing exhausted, destroy projectile
+                    self.kill()
+                    return
+
+                # If we have piercing left, continue to next enemy (don't return here)
 
         elif not self.is_player_projectile and player:
             # Enemy projectile hitting player - check against player's collision rect if available
@@ -155,9 +196,12 @@ class Projectile(pygame.sprite.Sprite):
                 # Create a surface for this trail segment
                 trail_surf = pygame.Surface((size, size), pygame.SRCALPHA)
 
-                # Choose color based on projectile type
+                # Choose color based on projectile type and critical status
                 if self.is_player_projectile:
-                    color = (0, 255, 255, alpha)  # Cyan for player
+                    if self.is_critical:
+                        color = (255, 255, 0, alpha)  # Golden yellow for critical hits
+                    else:
+                        color = (0, 255, 255, alpha)  # Cyan for normal player shots
                 else:
                     color = (255, 0, 0, alpha)  # Red for enemies
 
@@ -170,3 +214,35 @@ class Projectile(pygame.sprite.Sprite):
 
         # Draw the projectile itself
         surface.blit(self.image, (self.rect.x - camera_offset_x, self.rect.y - camera_offset_y))
+
+    def _create_explosion(self, x, y, enemies, game):
+        """Create an explosion effect that damages nearby enemies"""
+        if not game or not hasattr(game, 'level') or not hasattr(game.level, 'visual_effects'):
+            return
+
+        # Create visual explosion effect
+        game.level.visual_effects.particle_system.add_explosion(
+            x, y, (255, 165, 0), particle_count=20, intensity=8.0  # Orange explosion
+        )
+        game.level.visual_effects.screen_effects.add_screen_shake(intensity=6.0, duration=10)
+
+        # Damage enemies within explosion radius
+        explosion_rect = pygame.Rect(
+            x - self.explosion_radius,
+            y - self.explosion_radius,
+            self.explosion_radius * 2,
+            self.explosion_radius * 2
+        )
+
+        for enemy in enemies:
+            if explosion_rect.colliderect(enemy.rect):
+                # Calculate distance for damage falloff
+                distance = ((enemy.rect.centerx - x) ** 2 + (enemy.rect.centery - y) ** 2) ** 0.5
+                if distance <= self.explosion_radius:
+                    # Damage falls off with distance (50% damage at edge)
+                    damage_multiplier = 1.0 - (distance / self.explosion_radius) * 0.5
+                    explosion_damage = int(self.damage * 0.7 * damage_multiplier)  # 70% of projectile damage
+
+                    enemy_died = enemy.take_damage(explosion_damage)
+                    if enemy_died and game:
+                        game.score += 100  # ENEMY_KILL_SCORE equivalent

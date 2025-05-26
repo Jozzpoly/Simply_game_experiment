@@ -32,6 +32,38 @@ class Equipment:
         """Get the bonus for a specific stat"""
         return self.stats.get(stat_name, 0.0) * self.level
 
+    def get_formatted_stat_bonus(self, stat_name: str) -> str:
+        """Get formatted stat bonus with appropriate decimal places"""
+        bonus = self.get_stat_bonus(stat_name)
+
+        # Define which stats should be shown as percentages
+        percentage_stats = {
+            "critical_chance", "damage_reduction", "xp_bonus", "item_find",
+            "skill_cooldown", "resource_bonus"
+        }
+
+        # Define which stats should be shown as integers
+        integer_stats = {
+            "damage_bonus", "health_bonus", "fire_rate_bonus", "projectile_speed"
+        }
+
+        if stat_name in percentage_stats:
+            # Show as percentage with 1-2 decimal places
+            percentage = bonus * 100
+            if percentage >= 10:
+                return f"+{percentage:.1f}%"
+            else:
+                return f"+{percentage:.2f}%"
+        elif stat_name in integer_stats:
+            # Show as integer
+            return f"+{int(bonus)}"
+        else:
+            # Show as decimal with 1-2 decimal places
+            if bonus >= 10:
+                return f"+{bonus:.1f}"
+            else:
+                return f"+{bonus:.2f}"
+
     def upgrade(self) -> bool:
         """Upgrade the equipment to the next level"""
         if self.level < 10:  # Max equipment level
@@ -125,20 +157,132 @@ class EquipmentManager:
 
     def _generate_equipment_stats(self, base_stats: Dict[str, float],
                                  rarity: str, player_level: int) -> Dict[str, float]:
-        """Generate stats for equipment based on rarity and player level"""
+        """Generate stats for equipment - COMPLETELY REBUILT TO IGNORE ZERO BASE_STATS"""
+        # CRITICAL FIX: Ignore the base_stats from constants (they're all 0)
+        # Use only our enhanced system that guarantees meaningful values
+
         stats = {}
         rarity_index = EQUIPMENT_RARITIES.index(rarity)
-        rarity_multiplier = 1.0 + (rarity_index * 0.5)  # 1.0, 1.5, 2.0, 2.5
-        level_multiplier = 1.0 + (player_level * 0.1)
 
-        for stat_name in base_stats:
-            if random.random() < 0.7:  # 70% chance for each stat to appear
-                base_value = self._get_base_stat_value(stat_name)
-                stat_value = base_value * rarity_multiplier * level_multiplier
-                stat_value *= random.uniform(0.8, 1.2)  # Add some randomness
-                stats[stat_name] = round(stat_value, 2)
+        # Aggressive multipliers to ensure meaningful values
+        rarity_multiplier = 2.0 + (rarity_index * 1.0)  # 2.0, 3.0, 4.0, 5.0
+        level_multiplier = 1.5 + (player_level * 0.2)   # Strong level scaling
+
+        # Get available stat types (ignore the zero values from base_stats)
+        available_stats = list(base_stats.keys())
+
+        # Determine how many stats this item will have (guaranteed 1-3 stats)
+        min_stats = 1
+        max_stats = min(3, len(available_stats))
+        num_stats = random.randint(min_stats, max_stats)
+
+        # Select which stats will appear
+        selected_stats = random.sample(available_stats, num_stats)
+
+        # Generate each selected stat with GUARANTEED meaningful values
+        for stat_name in selected_stats:
+            # COMPLETELY IGNORE base_stats[stat_name] - use only enhanced values
+
+            # Get our enhanced base value (never zero)
+            enhanced_base = self._get_enhanced_base_value(stat_name)
+
+            # Get guaranteed minimum (safety net)
+            guaranteed_min = self._get_guaranteed_minimum_value(stat_name)
+
+            # Calculate value using ONLY enhanced base (never zero)
+            calculated_value = enhanced_base * rarity_multiplier * level_multiplier
+
+            # Add positive randomness
+            randomness = random.uniform(1.0, 1.4)  # 100% to 140% of calculated value
+            final_value = calculated_value * randomness
+
+            # Apply guaranteed minimum as absolute safety net
+            final_value = max(final_value, guaranteed_min)
+
+            # Round and store with type-appropriate handling
+            if self._is_integer_stat(stat_name):
+                # Integer stats - round and ensure minimum
+                final_stat_value = max(int(guaranteed_min), round(final_value))
+            else:
+                # Decimal stats - round to 2 places and ensure minimum
+                final_stat_value = max(guaranteed_min, round(final_value, 2))
+
+            # TRIPLE CHECK: Ensure no zero values can ever exist
+            if final_stat_value <= 0:
+                final_stat_value = guaranteed_min
+
+            stats[stat_name] = final_stat_value
+
+        # FINAL SAFETY CHECK: Ensure at least one stat exists with meaningful value
+        if not stats:
+            # Emergency fallback - force a meaningful stat
+            stat_name = random.choice(available_stats)
+            stats[stat_name] = self._get_guaranteed_minimum_value(stat_name)
+
+        # VALIDATION: Check all stats are positive
+        for stat_name, value in stats.items():
+            if value <= 0:
+                print(f"ERROR: Generated zero stat {stat_name}={value}, fixing...")
+                stats[stat_name] = self._get_guaranteed_minimum_value(stat_name)
 
         return stats
+
+    def _get_guaranteed_minimum_value(self, stat_name: str) -> float:
+        """Get guaranteed minimum value that ensures meaningful gameplay impact"""
+        minimums = {
+            # Weapon stats - guaranteed meaningful minimums
+            "damage_bonus": 2,          # At least +2 damage
+            "fire_rate_bonus": 15,      # At least 15ms reduction
+            "critical_chance": 0.02,    # At least 2% crit chance
+            "projectile_speed": 1,      # At least +1 speed
+
+            # Armor stats
+            "health_bonus": 8,          # At least +8 health
+            "damage_reduction": 0.03,   # At least 3% damage reduction
+            "speed_bonus": 0.3,         # At least 0.3 speed bonus
+            "regeneration": 0.8,        # At least 0.8 regen per second
+
+            # Accessory stats
+            "xp_bonus": 0.08,           # At least 8% XP bonus
+            "item_find": 0.06,          # At least 6% item find
+            "skill_cooldown": 0.05,     # At least 5% cooldown reduction
+            "resource_bonus": 0.12      # At least 12% resource bonus
+        }
+        return minimums.get(stat_name, 1.0)
+
+    def _get_enhanced_base_value(self, stat_name: str) -> float:
+        """Get enhanced base values that scale well with multipliers"""
+        enhanced_bases = {
+            # Weapon stats - higher base values
+            "damage_bonus": 8.0,        # Base 8 damage
+            "fire_rate_bonus": 60.0,    # Base 60ms reduction
+            "critical_chance": 0.08,    # Base 8% crit
+            "projectile_speed": 3.0,    # Base +3 speed
+
+            # Armor stats
+            "health_bonus": 25.0,       # Base 25 health
+            "damage_reduction": 0.12,   # Base 12% reduction
+            "speed_bonus": 0.8,         # Base 0.8 speed
+            "regeneration": 1.5,        # Base 1.5 regen
+
+            # Accessory stats
+            "xp_bonus": 0.18,           # Base 18% XP
+            "item_find": 0.15,          # Base 15% item find
+            "skill_cooldown": 0.12,     # Base 12% cooldown
+            "resource_bonus": 0.25      # Base 25% resource
+        }
+        return enhanced_bases.get(stat_name, 2.0)
+
+    def _is_integer_stat(self, stat_name: str) -> bool:
+        """Check if a stat should be treated as an integer"""
+        integer_stats = {
+            "damage_bonus", "health_bonus", "fire_rate_bonus", "projectile_speed", "speed_bonus"
+        }
+        return stat_name in integer_stats
+
+    def _get_minimum_stat_threshold(self, stat_name: str) -> float:
+        """Get minimum meaningful threshold for each stat type - DEPRECATED, use _get_guaranteed_minimum_value"""
+        return self._get_guaranteed_minimum_value(stat_name)
 
     def _get_base_stat_value(self, stat_name: str) -> float:
         """Get base value for a stat type"""
@@ -199,12 +343,60 @@ class EquipmentManager:
         return False
 
     def get_total_stat_bonus(self, stat_name: str) -> float:
-        """Get total bonus for a stat from all equipped items"""
+        """Get total bonus for a stat from all equipped items including set bonuses"""
         total = 0.0
+
+        # Add individual equipment bonuses
         for equipment in self.equipped.values():
             if equipment:
                 total += equipment.get_stat_bonus(stat_name)
+
+        # Add set bonuses
+        set_bonuses = self.calculate_set_bonuses()
+        total += set_bonuses.get(stat_name, 0.0)
+
         return total
+
+    def calculate_set_bonuses(self) -> Dict[str, float]:
+        """Calculate set bonuses from equipped items of matching rarity"""
+        set_bonuses = {}
+
+        # Count equipped items by rarity
+        rarity_counts = {}
+        for equipment in self.equipped.values():
+            if equipment:
+                rarity = equipment.rarity
+                rarity_counts[rarity] = rarity_counts.get(rarity, 0) + 1
+
+        # Apply set bonuses for rarities with enough items
+        for rarity, count in rarity_counts.items():
+            if count >= EQUIPMENT_SET_BONUS_THRESHOLD and rarity in EQUIPMENT_SET_BONUSES:
+                bonus_data = EQUIPMENT_SET_BONUSES[rarity]
+                for stat, bonus in bonus_data.items():
+                    set_bonuses[stat] = set_bonuses.get(stat, 0.0) + bonus
+
+        return set_bonuses
+
+    def get_active_set_bonuses(self) -> Dict[str, Dict[str, float]]:
+        """Get information about currently active set bonuses"""
+        active_sets = {}
+
+        # Count equipped items by rarity
+        rarity_counts = {}
+        for equipment in self.equipped.values():
+            if equipment:
+                rarity = equipment.rarity
+                rarity_counts[rarity] = rarity_counts.get(rarity, 0) + 1
+
+        # Identify active sets
+        for rarity, count in rarity_counts.items():
+            if count >= EQUIPMENT_SET_BONUS_THRESHOLD and rarity in EQUIPMENT_SET_BONUSES:
+                active_sets[rarity] = {
+                    "count": count,
+                    "bonuses": EQUIPMENT_SET_BONUSES[rarity].copy()
+                }
+
+        return active_sets
 
     def upgrade_equipment(self, equipment: Equipment, currency: int) -> Tuple[bool, int]:
         """Upgrade equipment if player has enough currency"""

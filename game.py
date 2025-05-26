@@ -237,6 +237,17 @@ class Game:
                 elif upgrade_result and upgrade_result.startswith("tab_"):
                     # Tab was switched - no action needed, just update display
                     pass
+                elif upgrade_result == "inventory_full":
+                    # Inventory is full, cannot equip new item
+                    self.skill_notifications.add_notification("Inventory full! Cannot equip item.", RED)
+                elif upgrade_result and upgrade_result.startswith("equipped_"):
+                    # Item was equipped successfully
+                    item_type = upgrade_result[9:]  # Remove "equipped_" prefix
+                    self.skill_notifications.add_notification(f"{item_type.capitalize()} equipped!", GREEN)
+                elif upgrade_result and upgrade_result.startswith("unequipped_"):
+                    # Item was unequipped successfully
+                    item_type = upgrade_result[11:]  # Remove "unequipped_" prefix
+                    self.skill_notifications.add_notification(f"{item_type.capitalize()} unequipped!", YELLOW)
 
     def _handle_keydown(self, event: pygame.event.Event) -> None:
         """Handle keyboard key press events"""

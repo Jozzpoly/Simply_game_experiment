@@ -83,6 +83,36 @@ EQUIPMENT_RARITY_WEIGHTS = [0.6, 0.25, 0.12, 0.03]  # Common, Uncommon, Rare, Ep
 # Achievement System
 ACHIEVEMENT_XP_BONUS = 25
 
+# Advanced Achievement Types
+ACHIEVEMENT_TYPES = {
+    "SIMPLE": "simple",      # Single condition achievement
+    "PROGRESSIVE": "progressive",  # Multi-step achievement with progress tracking
+    "CHAIN": "chain",        # Achievement that unlocks after completing prerequisites
+    "HIDDEN": "hidden"       # Achievement not visible until unlocked
+}
+
+# Achievement Chain Definitions
+ACHIEVEMENT_CHAINS = {
+    "warrior_path": {
+        "name": "Path of the Warrior",
+        "description": "Master the art of combat",
+        "achievements": ["first_blood", "enemy_slayer", "boss_hunter", "combat_master"],
+        "chain_reward": {"xp": 500, "skill_points": 5}
+    },
+    "survivor_path": {
+        "name": "Path of the Survivor",
+        "description": "Prove your resilience",
+        "achievements": ["first_steps", "damage_dealer", "perfectionist", "immortal"],
+        "chain_reward": {"xp": 400, "skill_points": 4}
+    },
+    "explorer_path": {
+        "name": "Path of the Explorer",
+        "description": "Discover all secrets",
+        "achievements": ["collector", "treasure_hunter", "secret_finder", "master_explorer"],
+        "chain_reward": {"xp": 300, "skill_points": 3}
+    }
+}
+
 # Level generation
 LEVEL_WIDTH = 60  # in tiles (increased for fullscreen support)
 LEVEL_HEIGHT = 45  # in tiles (increased for fullscreen support)
@@ -140,6 +170,67 @@ UTILITY_SKILLS = {
     "lucky_find": {"max_level": 3, "drop_chance_bonus_per_level": 0.05}
 }
 
+# Skill Synergies - combinations that provide bonus effects
+SKILL_SYNERGIES = {
+    # Combat synergies
+    "critical_mastery": {
+        "skills": ["critical_strike", "weapon_mastery"],
+        "min_levels": [3, 2],
+        "bonus": {"critical_damage_multiplier": 0.5}  # +50% crit damage
+    },
+    "explosive_expert": {
+        "skills": ["explosive_shots", "piercing_shots"],
+        "min_levels": [2, 2],
+        "bonus": {"explosion_pierce": True}  # Explosions can pierce
+    },
+    "combat_veteran": {
+        "skills": ["critical_strike", "multi_shot", "weapon_mastery"],
+        "min_levels": [2, 2, 3],
+        "bonus": {"damage_bonus": 0.2, "fire_rate_bonus": 0.15}
+    },
+
+    # Survival synergies
+    "fortress": {
+        "skills": ["armor_mastery", "damage_resistance"],
+        "min_levels": [3, 3],
+        "bonus": {"damage_reduction": 0.1}  # Additional 10% damage reduction
+    },
+    "regenerative_defense": {
+        "skills": ["health_regeneration", "shield_mastery"],
+        "min_levels": [2, 2],
+        "bonus": {"regen_multiplier": 1.5}  # 50% faster regeneration
+    },
+    "survivor": {
+        "skills": ["armor_mastery", "health_regeneration", "second_wind"],
+        "min_levels": [2, 2, 1],
+        "bonus": {"max_health_bonus": 0.25}  # +25% max health
+    },
+
+    # Utility synergies
+    "treasure_hunter": {
+        "skills": ["lucky_find", "detection"],
+        "min_levels": [2, 2],
+        "bonus": {"rare_drop_chance": 0.1}  # +10% rare drop chance
+    },
+    "efficiency_master": {
+        "skills": ["resource_efficiency", "movement_mastery"],
+        "min_levels": [2, 3],
+        "bonus": {"xp_bonus": 0.1, "speed_bonus": 0.1}
+    },
+
+    # Cross-category synergies
+    "battle_mage": {
+        "skills": ["explosive_shots", "item_magnetism"],
+        "min_levels": [2, 2],
+        "bonus": {"explosion_radius": 10}  # +10 explosion radius
+    },
+    "swift_warrior": {
+        "skills": ["movement_mastery", "critical_strike"],
+        "min_levels": [3, 2],
+        "bonus": {"speed_crit_bonus": 0.02}  # +2% crit per speed point above base
+    }
+}
+
 # Equipment Rarities and Stats
 EQUIPMENT_RARITIES = ["Common", "Uncommon", "Rare", "Epic"]
 EQUIPMENT_RARITY_COLORS = {
@@ -147,6 +238,15 @@ EQUIPMENT_RARITY_COLORS = {
     "Uncommon": (0, 255, 0),        # Green
     "Rare": (0, 100, 255),          # Blue
     "Epic": (128, 0, 128)           # Purple
+}
+
+# Equipment Set Bonuses
+EQUIPMENT_SET_BONUS_THRESHOLD = 2  # Minimum items needed for set bonus
+EQUIPMENT_SET_BONUSES = {
+    "Common": {"health_bonus": 10, "damage_bonus": 2},
+    "Uncommon": {"health_bonus": 20, "damage_bonus": 5, "speed_bonus": 0.5},
+    "Rare": {"health_bonus": 35, "damage_bonus": 8, "speed_bonus": 1.0, "xp_bonus": 0.1},
+    "Epic": {"health_bonus": 50, "damage_bonus": 12, "speed_bonus": 1.5, "xp_bonus": 0.2, "critical_chance": 0.05}
 }
 
 # Equipment Types
